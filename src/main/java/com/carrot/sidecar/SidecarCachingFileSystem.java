@@ -20,6 +20,8 @@ package com.carrot.sidecar;
 import static com.google.common.hash.Hashing.md5;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -31,7 +33,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -250,7 +251,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
-      writeCacheFileList.load(fis);
+      DataInputStream dis = new DataInputStream(fis);
+      this.writeCacheSize.set(dis.readLong());
+      writeCacheFileList.load(dis);
+      dis.close();
     } 
   }
 
@@ -330,7 +334,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       String snapshotDir = config.getSnapshotDir(FIFOCache.NAME);
       FileOutputStream fos = new FileOutputStream(snapshotDir + 
       File.separator + FIFOCache.FILE_NAME);
-      writeCacheFileList.save(fos);
+      // Save total write cache size
+      DataOutputStream dos = new DataOutputStream(fos);
+      dos.writeLong(writeCacheSize.get());
+      writeCacheFileList.save(dos);
       // do not close - it was closed already
       long end = System.currentTimeMillis();
       LOG.info("Shutting down cache[{}] done in {}ms",FIFOCache.NAME , (end - start));
@@ -370,10 +377,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public FSDataInputStream open(Path path, int bufferSize) throws IOException {
 
     LOG.debug("Open {}", path);
-    
-    Future<FSDataInputStream> remoteStreamFuture = null;
-    Future<FSDataInputStream> cacheStreamFuture = null;
-    
+        
     Callable<FSDataInputStream> remoteCall = () -> {
       return remoteFS.open(path, bufferSize);
     };
@@ -382,8 +386,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       return writeCacheFS == null? null: writeCacheFS.open(path, bufferSize);
     };
     
-    remoteStreamFuture = unboundedThreadPool.submit(remoteCall);
-    cacheStreamFuture = unboundedThreadPool.submit(cacheCall);
     
     Long fileLength = (Long) metaCache.get(path.toString()); 
     if (fileLength == null) {
@@ -392,7 +394,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       metaCache.put(path.toString(), fileLength, 0 /* No expiration*/);
     }
     FSDataInputStream cachingInputStream =
-        new FSDataInputStream(new SidecarCachingInputStream(dataCache, path, remoteStreamFuture, cacheStreamFuture, fileLength,
+        new FSDataInputStream(new SidecarCachingInputStream(dataCache, path, remoteCall, cacheCall, fileLength,
             dataPageSize, ioBufferSize));
     return cachingInputStream;
   }
@@ -543,7 +545,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   public void close() throws IOException {
-    this.remoteFS.close();
+    // Remote FS was already closed
     if (this.writeCacheFS != null) {
       this.writeCacheFS.close();
     }

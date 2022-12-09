@@ -20,7 +20,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.concurrent.Future;
+import java.util.concurrent.Callable;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -50,10 +50,16 @@ public class SidecarCachingInputStream extends InputStream
   private byte[] baseKey;
   
   /** The external file input stream future*/
-  private Future<FSDataInputStream> remoteStreamFuture;
+  private Callable<FSDataInputStream> remoteStreamCallable;
+  
+  /** Remote input stream */
+  private FSDataInputStream remoteStream;
   
   /** Cached input stream future - can be null*/
-  private Future<FSDataInputStream> cacheStreamFuture;
+  private Callable<FSDataInputStream> cacheStreamCallable;
+  
+  /** Cache input stream (from write cache FS, if enabled)*/
+  private FSDataInputStream cacheStream;
   
   /** Carrot cache instance */
   private Cache cache;
@@ -104,18 +110,18 @@ public class SidecarCachingInputStream extends InputStream
    * Constructor 
    * @param cache parent cache
    * @param path file path
-   * @param remoteStreamFuture external input stream future
-   * @param ccheStreamFuture cache input stream future
+   * @param remoteStreamCall external input stream callable
+   * @param ccheStreamFuture cache input stream callable
    * @param fileLength file length
    * @param pageSize page size
    * @param bufferSize I/O buffer size
    */
-  public SidecarCachingInputStream(Cache cache, Path path, Future<FSDataInputStream> remoteStreamFuture, 
-      Future<FSDataInputStream> cacheStreamFuture,
+  public SidecarCachingInputStream(Cache cache, Path path, Callable<FSDataInputStream> remoteStreamCall, 
+      Callable<FSDataInputStream> cacheStreamCall,
       long fileLength, int pageSize, int bufferSize) {
     this.cache = cache;
-    this.remoteStreamFuture = remoteStreamFuture;
-    this.cacheStreamFuture = cacheStreamFuture;
+    this.remoteStreamCallable = remoteStreamCall;
+    this.cacheStreamCallable = cacheStreamCall;
     this.pageSize = pageSize;
     this.bufferSize = bufferSize;
     this.fileLength = fileLength;
@@ -268,14 +274,16 @@ public class SidecarCachingInputStream extends InputStream
     }
     // Update position of the external stream
     if (!isPositionedRead) {
-      get(this.remoteStreamFuture).seek(this.position);
-      FSDataInputStream cacheStream = get(this.cacheStreamFuture);
+      getRemoteStream().seek(this.position);
+      FSDataInputStream cacheStream = getCacheStream();
       if (cacheStream != null) {
         try {
           cacheStream.seek(this.position);
         } catch (IOException e) {
+          //TODO: better handling exception
           LOG.error("Cached input stream", e);
-          this.cacheStreamFuture = null;
+          this.cacheStreamCallable = null;
+          this.cacheStream = null;
         }
       }
     }
@@ -288,17 +296,36 @@ public class SidecarCachingInputStream extends InputStream
     return totalBytesRead;
   }
 
-  private FSDataInputStream get(Future<FSDataInputStream> future) throws IOException {
+  private FSDataInputStream getCacheStream() throws IOException {
     try {
-      if (future == null) {
+      if (this.cacheStreamCallable == null) {
         return null;
       }
-      return future.get();
+      if (this.cacheStream != null) {
+        return this.cacheStream;
+      }
+      this.cacheStream =  this.cacheStreamCallable.call();
+      return this.cacheStream;
     } catch (Exception e) {
       throw new IOException(e);
     }
   }
 
+  private FSDataInputStream getRemoteStream() throws IOException {
+    try {
+      if (this.remoteStreamCallable == null) {
+        return null;
+      }
+      if (this.remoteStream != null) {
+        return this.remoteStream;
+      }
+      this.remoteStream =  this.remoteStreamCallable.call();
+      return this.remoteStream;
+    } catch (Exception e) {
+      throw new IOException(e);
+    }
+  }
+  
   @Override
   public long skip(long n) {
     checkIfClosed();
@@ -315,8 +342,8 @@ public class SidecarCachingInputStream extends InputStream
     if (closed) {
       throw new IOException("Cannot close a closed stream");
     }
-    get(remoteStreamFuture).close();
-    FSDataInputStream cached = get(this.cacheStreamFuture);
+    getRemoteStream().close();
+    FSDataInputStream cached = getCacheStream();
     if (cached != null) {
       try {
         cached.close();
@@ -402,20 +429,22 @@ public class SidecarCachingInputStream extends InputStream
   
   private int readFromRemote(long offset, byte[] buffer, int bufOffset, int len)
       throws IOException {
-    FSDataInputStream is = get(this.remoteStreamFuture);
+    FSDataInputStream is = getRemoteStream();
     return is.read(offset, buffer, bufOffset, len);
   }
   
   private int readFromCache(long offset, byte[] buffer, int bufOffset, int len) {
-    if (this.cacheStreamFuture == null) {
+    if (this.cacheStreamCallable == null) {
       return -1;//
     }
     try {
-      FSDataInputStream is = get(this.cacheStreamFuture);
+      FSDataInputStream is = getCacheStream();
       return is.read(offset, buffer, bufOffset, len);
     } catch(IOException e) {
+      //TODO: better exception handling
       LOG.error("Cached input stream", e);
-      this.cacheStreamFuture = null;
+      this.cacheStreamCallable = null;
+      this.cacheStream = null;
     }
     return -1;
   }
