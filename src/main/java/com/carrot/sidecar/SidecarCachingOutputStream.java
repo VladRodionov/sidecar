@@ -74,14 +74,15 @@ implements Syncable, CanSetDropBehind, StreamCapabilities{
   
   /**
    * Constructor
-   * @param c caching output stream
+   * @param c caching output stream - can be null
    * @param r remote output stream
    * @param p path to the remote file
    */
-  public SidecarCachingOutputStream(FSDataOutputStream c, FSDataOutputStream r, Path p) {
+  public SidecarCachingOutputStream(FSDataOutputStream c, FSDataOutputStream r, Path p, Listener l) {
     this.cachingOut = c;
     this.remoteOut = r;
     this.remotePath = p;
+    this.listener = l;
   }
   
   /**
@@ -294,5 +295,6 @@ implements Syncable, CanSetDropBehind, StreamCapabilities{
   
   private void incrLength(long incr) {
     this.length += incr;
+    this.listener.bytesWritten(this, incr);
   }
 }

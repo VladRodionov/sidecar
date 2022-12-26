@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar;
+package com.carrot.sidecar.util;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -29,6 +29,9 @@ import org.slf4j.LoggerFactory;
 
 public class SidecarConfig extends Properties{
 
+  public final static String DATA_CACHE_NAME = "sidecar-data";
+  public final static String META_CACHE_NAME = "sidecar-meta";
+  
   private static final long serialVersionUID = 1L;
 
   private static final Logger LOG = LoggerFactory.getLogger(SidecarConfig.class);
@@ -50,6 +53,8 @@ public class SidecarConfig extends Properties{
   
   public final static String SIDECAR_JMX_METRICS_DOMAIN_NAME_KEY ="sidecar.jmx.metrics.domain.name";
   
+  public final static String SIDECAR_TEST_MODE_KEY = "sidecar.test.mode"; 
+  
   public final static boolean DEFAULT_SIDECAR_WRITE_CACHE_ENABLED = false;
   
   public final static long DEFAULT_SIDECAR_WRITE_CACHE_SIZE = 0;
@@ -63,6 +68,8 @@ public class SidecarConfig extends Properties{
   public final static boolean DEFAULT_SIDECAR_JMX_METRICS_ENABLED = true;
   
   public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "com.sidecar.metrics";
+  
+  public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
   
   
   private static SidecarConfig instance;
@@ -112,9 +119,30 @@ public class SidecarConfig extends Properties{
    * Set write cache enabled
    * @param b true or false
    */
-  public void setWriteCacheEnabled(boolean b) {
+  public SidecarConfig setWriteCacheEnabled(boolean b) {
     setProperty(SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.toString(b));
-    
+    return this;
+  }
+  
+  /**
+   * Is test mode
+   * @return true or false
+   */
+  public boolean isTestEnabled() {
+    String value = getProperty(SIDECAR_TEST_MODE_KEY);
+    if (value != null) {
+      return Boolean.valueOf(value);
+    }
+    return DEFAULT_SIDECAR_TEST_MODE;
+  }
+  
+  /**
+   * Set test mode
+   * @param b true or false
+   */
+  public SidecarConfig setTestMode(boolean b) {
+    setProperty(SIDECAR_TEST_MODE_KEY, Boolean.toString(b));
+    return this;
   }
   
   /**
@@ -133,8 +161,9 @@ public class SidecarConfig extends Properties{
    * Set JMX metrics enabled
    * @param b true or false
    */
-  public void setJMXMetricsEnabled(boolean b) {
+  public SidecarConfig setJMXMetricsEnabled(boolean b) {
     setProperty(SIDECAR_JMX_METRICS_ENABLED_KEY, Boolean.toString(b));
+    return this;
   }
   
   /**
@@ -150,8 +179,9 @@ public class SidecarConfig extends Properties{
    * Set JMX metrics domain name
    * @param name domain name
    */
-  public void setJMXMetricsDomainName(String name) {
+  public SidecarConfig setJMXMetricsDomainName(String name) {
     setProperty(SIDECAR_JMX_METRICS_DOMAIN_NAME_KEY, name);
+    return this;
   }
   
   /**
@@ -175,8 +205,9 @@ public class SidecarConfig extends Properties{
    * Set write cache directory location
    * @param uri location
    */
-  public void setWriteCacheURI(URI uri) {
+  public SidecarConfig setWriteCacheURI(URI uri) {
     setProperty(SIDECAR_WRITE_CACHE_URI_KEY, uri.toString());
+    return this;
   }
   
   /**
@@ -195,8 +226,9 @@ public class SidecarConfig extends Properties{
    * Set write cache size per instance in bytes
    * @param size
    */
-  public void setWriteCacheSizePerInstance(long size) {
+  public SidecarConfig setWriteCacheSizePerInstance(long size) {
     setProperty(SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(size));
+    return this;
   }
   
   /**
@@ -215,8 +247,9 @@ public class SidecarConfig extends Properties{
    * Set data page size  in bytes
    * @param size data page size
    */
-  public void setDataPageSize(long size) {
+  public SidecarConfig setDataPageSize(long size) {
     setProperty(SIDECAR_DATA_PAGE_SIZE_KEY, Long.toString(size));
+    return this;
   }
   
   /**
@@ -235,8 +268,9 @@ public class SidecarConfig extends Properties{
    * Set I/O buffer size  in bytes
    * @param size I/O buffer size
    */
-  public void setIOBufferSize(long size) {
+  public SidecarConfig setIOBufferSize(long size) {
     setProperty(SIDECAR_IO_BUFFER_SIZE_KEY, Long.toString(size));
+    return this;
   }
   
   /**
@@ -255,8 +289,9 @@ public class SidecarConfig extends Properties{
    * Set I/O pool size
    * @param size I/O pool size
    */
-  public void setIOPoolSize(int size) {
+  public SidecarConfig setIOPoolSize(int size) {
     setProperty(SIDECAR_IO_POOL_SIZE_KEY, Integer.toString(size));
+    return this;
   }
   
 }

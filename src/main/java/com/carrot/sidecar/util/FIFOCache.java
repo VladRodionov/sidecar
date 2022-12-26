@@ -75,6 +75,14 @@ public class FIFOCache<K, V> {
     return mFIFOCache.keySet().iterator().next();
   }
   
+  /**
+   * Get size of a cache
+   * @return size
+   */
+  public int size() {
+    return mFIFOCache.size();
+  }
+  
   public void save(OutputStream os) throws IOException {
     ObjectOutputStream oos = new ObjectOutputStream(os);
     oos.writeObject(mFIFOCache);

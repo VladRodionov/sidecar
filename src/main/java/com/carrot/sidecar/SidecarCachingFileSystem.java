@@ -63,18 +63,20 @@ import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.FIFOCache;
+import com.carrot.sidecar.util.SidecarConfig;
 import com.google.common.annotations.VisibleForTesting;
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
   
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);
 
-  private final static String DATA_CACHE_NAME = "sidecar-data";
-  private final static String META_CACHE_NAME = "sidecar-meta";
+  private final static String DATA_CACHE_NAME = SidecarConfig.DATA_CACHE_NAME;
+  private final static String META_CACHE_NAME = SidecarConfig.META_CACHE_NAME;
   /*
    *  Local cache for remote file data
    */
   private static Cache dataCache; // singleton
+  
   /*
    *  Caches remote file lengths by file path
    */
@@ -85,8 +87,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private static FIFOCache<String, Long> writeCacheFileList;
   
+  /*
+   * Caching {FS.URI, sidecar instance}  
+   */
   private static ConcurrentHashMap<String, SidecarCachingFileSystem> cachedFS =
       new ConcurrentHashMap<>();
+
+  /*
+   * When file eviction starts from write cache
+   */
+  private static double writeCacheEvictionStartsAt = 0.95;
+  
+  /*
+   * When file eviction stops in write cache
+   */
+  private static double writeCacheEvictionStopsAt = 0.9;
 
   /*
    * Thread pool
@@ -132,16 +147,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   /*
    *  Write cache maximum size (per server instance)
    */
-  private long writeCacheMaxSize;
+  static long writeCacheMaxSize;
   
   /*
    *  Current write cache size 
    */
-  AtomicLong writeCacheSize = new AtomicLong();
+  static AtomicLong writeCacheSize = new AtomicLong();
+  
   /*
-   * File eviction thread (from write cache)
+   * File eviction thread (from cache-on-write cache)
    */
-  AtomicReference<Thread> evictor;
+  static AtomicReference<Thread> evictor = new AtomicReference<>();
 
   public static SidecarCachingFileSystem get(FileSystem dataTier) throws IOException {
     checkJavaVersion();
@@ -170,6 +186,28 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     this.remoteFS = fs;
   }
 
+  private void setCacheTypes(CarrotConfig config) {
+    String[] names = config.getCacheNames();
+    String[] types = config.getCacheTypes();
+    
+    String[] newNames = new String[names.length + 2];
+    System.arraycopy(names, 0, newNames, 0, names.length);
+    
+    newNames[newNames.length - 2] = SidecarConfig.DATA_CACHE_NAME;
+    newNames[newNames.length - 1] = SidecarConfig.META_CACHE_NAME;
+    
+    String[] newTypes = new String[types.length + 2];
+    System.arraycopy(types, 0, newTypes, 0, types.length);
+    newTypes[newTypes.length - 2] = "file";
+    newTypes[newTypes.length - 1] = "offheap";
+    
+    String cacheNames = com.carrot.sidecar.util.Utils.join(newNames, ",");
+    String cacheTypes = com.carrot.sidecar.util.Utils.join(newTypes, ",");
+    config.setCacheNames(cacheNames);
+    config.setCacheTypes(cacheTypes);
+
+  }
+  
   public void initialize(URI uri, Configuration configuration) throws IOException {
     try {
       if (inited) {
@@ -184,7 +222,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           config.setProperty(name, entry.getValue());
         }
       }
-      
+      // Add two caches (sidecar-data,sidecar-meta) types to the configuration
+      setCacheTypes(config);      
       SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
       
       this.dataPageSize = (int) sconfig.getDataPageSize();
@@ -192,11 +231,14 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.ioPoolSize = (int) sconfig.getIOPoolSize();
       this.writeCacheEnabled = sconfig.isWriteCacheEnabled();
       if (this.writeCacheEnabled) {
-        this.writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
+        writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
         URI writeCacheURI = sconfig.getWriteCacheURI();
         if (writeCacheURI != null) {
           this.writeCacheFS = FileSystem.get(writeCacheURI, configuration);
+          // Set working directory for cache
+          this.writeCacheFS.setWorkingDirectory(new Path(writeCacheURI.toString()));
         } else {
+          this.writeCacheEnabled = false;
           LOG.error("Write cache location is not specified. Disable cache on write");
         }
       }
@@ -214,16 +256,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         loadMetaCache();
         loadFIFOCache();
         
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-          try {
-            saveDataCache();
-            saveMetaCache();
-            saveFIFOCache();
-          } catch (IOException e) {
-            LOG.error(e.getMessage(), e);
-          }
-        }));
-        LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
+        if (!sconfig.isTestEnabled()) {
+          Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+              saveDataCache();
+              saveMetaCache();
+              saveFIFOCache();
+            } catch (IOException e) {
+              LOG.error(e.getMessage(), e);
+            }
+          }));
+          LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
+          LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
+          LOG.info("Shutdown hook installed for cache[fifo-cache]");
+
+        }
       }
       this.inited = true;
     } catch (Throwable e) {
@@ -242,6 +289,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   }
 
+  /**
+   * Get write cache FS
+   * @return write cache file system
+   */
+  public FileSystem getWriteCacheFS() {
+    return this.writeCacheFS;
+  }
+  
+  /**
+   * Get remote FS
+   * @return remote file system
+   */
+  public FileSystem getRemoteFS (){
+    return this.remoteFS;
+  }
+  
   private void loadFIFOCache() throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
     String snapshotDir = config.getSnapshotDir(FIFOCache.NAME);
@@ -252,7 +315,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
       DataInputStream dis = new DataInputStream(fis);
-      this.writeCacheSize.set(dis.readLong());
+      writeCacheSize.set(dis.readLong());
       writeCacheFileList.load(dis);
       dis.close();
     } 
@@ -326,7 +389,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
-  private void saveFIFOCache() throws IOException {
+  void saveFIFOCache() throws IOException {
     if (writeCacheFileList != null) {
       long start = System.currentTimeMillis();
       LOG.info("Shutting down cache[{}]", FIFOCache.NAME);
@@ -344,7 +407,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
 
-  private void saveDataCache() throws IOException {
+  void saveDataCache() throws IOException {
     long start = System.currentTimeMillis();
     LOG.info("Shutting down cache[{}]", DATA_CACHE_NAME);
     dataCache.shutdown();
@@ -352,7 +415,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.info("Shutting down cache[{}] done in {}ms", DATA_CACHE_NAME, (end - start));
   }
   
-  private void saveMetaCache() throws IOException {
+  void saveMetaCache() throws IOException {
     long start = System.currentTimeMillis();
     LOG.info("Shutting down cache[{}]", META_CACHE_NAME);
     metaCache.shutdown();
@@ -360,221 +423,32 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.info("Shutting down cache[{}] done in {}ms", META_CACHE_NAME, (end - start));
   }
   
-  /**********************************************************************************
-   * 
-   * FileSystem API
-   * 
-   **********************************************************************************/
-  
-  /**
-   * Open file 
-   * @param path path to the file
-   * @param bufferSize buffer size
-   * @return input stream
-   * @throws Exception
-   */
-  
-  public FSDataInputStream open(Path path, int bufferSize) throws IOException {
-
-    LOG.debug("Open {}", path);
-        
-    Callable<FSDataInputStream> remoteCall = () -> {
-      return remoteFS.open(path, bufferSize);
-    };
-    
-    Callable<FSDataInputStream> cacheCall = () -> {
-      return writeCacheFS == null? null: writeCacheFS.open(path, bufferSize);
-    };
-    
-    
-    Long fileLength = (Long) metaCache.get(path.toString()); 
-    if (fileLength == null) {
-      FileStatus fs = remoteFS.getFileStatus(path);
-      fileLength = fs.getLen();
-      metaCache.put(path.toString(), fileLength, 0 /* No expiration*/);
-    }
-    FSDataInputStream cachingInputStream =
-        new FSDataInputStream(new SidecarCachingInputStream(dataCache, path, remoteCall, cacheCall, fileLength,
-            dataPageSize, ioBufferSize));
-    return cachingInputStream;
-  }
-  /**
-   * Create an FSDataOutputStream at the indicated Path with write-progress
-   * reporting.
-   * @param f the file name to open
-   * @param permission the permission to set.
-   * @param overwrite if a file with this name already exists, then if true,
-   *   the file will be overwritten, and if false an error will be thrown.
-   * @param bufferSize the size of the buffer to be used.
-   * @param replication required block replication for the file.
-   * @param blockSize the requested block size.
-   * @param progress the progress reporter.
-   * @throws IOException in the event of IO related errors.
-   * @see #setPermission(Path, FsPermission)
-   */
-  @SuppressWarnings("deprecation")
-  public FSDataOutputStream create(Path f, FsPermission permission,
-      boolean overwrite, int bufferSize, short replication, long blockSize,
-      Progressable progress) throws IOException {
-  
-    LOG.debug("Create {}", f);
-    FSDataOutputStream remoteOut = 
-        this.remoteFS.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
-    if (!this.writeCacheEnabled) {
-      return remoteOut;
-    }
-    
-    Path cachePath = remoteToCachingPath(f);
-    FSDataOutputStream cacheOut = null;
-    try {
-        this.writeCacheFS.create(cachePath, overwrite, bufferSize, replication, blockSize);
-    } catch (IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
-    }
-
-    // Create file moniker
-    createMoniker(cachePath);
-    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f));
-  }
-  
-  private void createMoniker(Path cachePath) throws IOException {
-    Path p = new Path(cachePath.toString() + ".toupload");
-    FSDataOutputStream os = this.writeCacheFS.create(p);
-    os.close();
-  }
-
-  private void deleteMoniker(Path cachePath) throws IOException {
-    Path p = new Path(cachePath.toString() + ".toupload");
-    this.writeCacheFS.delete(p, false);
-  }
-  
-  @SuppressWarnings("deprecation")
-  public FSDataOutputStream createNonRecursive(Path path, FsPermission permission,
-      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
-      Progressable progress) throws IOException {
-    
-    LOG.debug("Create non-recursive {}", path);
-    FSDataOutputStream remoteOut = 
-        this.remoteFS.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize, progress);
-
-    if (!this.writeCacheEnabled) {
-      return remoteOut;
-    }
-    
-    Path cachePath = remoteToCachingPath(path);
-    FSDataOutputStream cacheOut = null;
-    try {
-        this.writeCacheFS.create(cachePath, true, bufferSize, replication, blockSize);
-    } catch(IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
-    }
-    
-    // Create file moniker
-    createMoniker(cachePath);
-    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path));
-  }
-
-  @SuppressWarnings("deprecation")
-  public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
-      throws IOException {
-    LOG.debug("Append {}", f);
-    FSDataOutputStream remoteOut = this.remoteFS.append(f, bufferSize, progress);
-
-    // Usually append is not supported by cloud object stores
-    if (!this.writeCacheEnabled) {
-      return remoteOut;
-    }
-    Path cachePath = remoteToCachingPath(f);
-    
-    FSDataOutputStream cacheOut = this.writeCacheFS.append(cachePath, bufferSize);
-    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f));
-  }
-
-  public boolean rename(Path src, Path dst) throws IOException {
-    LOG.debug("Rename {} to {}", src, dst);
-
-    if (!this.writeCacheEnabled) {
-      return this.remoteFS.rename(src, dst);
-    }
-    boolean result = this.remoteFS.rename(src, dst);
-    Path cacheSrc = null, cacheDst = null;
-    try {
-      cacheSrc = remoteToCachingPath(src);
-      cacheDst = remoteToCachingPath(dst);
-      this.writeCacheFS.rename(cacheSrc, cacheDst);
-    } catch (IOException e) {
-      LOG.error("Failed to rename {} to {}", cacheSrc, cacheDst);
-    }
-   
-    return result;
-  }
-
-  public boolean delete(Path f, boolean recursive) throws IOException {
-    
-    LOG.debug("Delete {} recursive={}", f, recursive);
-    
-    if (!this.writeCacheEnabled) {
-      return this.remoteFS.delete(f, recursive);
-    }
-    
-    boolean result = this.remoteFS.delete(f, recursive);
-    Path p = remoteToCachingPath(f);
-    try {
-      this.writeCacheFS.delete(p, recursive);
-    } catch (IOException e) {
-      //TODO
-    }
-    // Check if f is file
-    boolean isFile = metaCache.exists(f.toString());
-    if (isFile) {
-      // Clear data pages cache
-      Runnable r = () -> {
-        evictDataPages(f);
-        // Delete from meta cache
-        try {
-          metaCache.delete(f.toString());
-        } catch (IOException e) {
-          LOG.error("Failed to remove file from meta cache", e);
-        }
-      };
-      unboundedThreadPool.submit(r);
-    }
-    return result;
-  }
-
-  public void close() throws IOException {
-    // Remote FS was already closed
-    if (this.writeCacheFS != null) {
-      this.writeCacheFS.close();
-    }
-  }
-  
   @VisibleForTesting
-  static void dispose() {
+  public static void dispose() {
     dataCache.dispose();
+    metaCache.getNativeCache().dispose();
     cachedFS.clear();
+    dataCache = null;
+    metaCache = null;
   }
 
-  private Path remoteToCachingPath(Path remotePath) {
+  @VisibleForTesting
+  Path remoteToCachingPath(Path remotePath) {
     URI remoteURI = remotePath.toUri();
     String path = remoteURI.getPath();
-    URI remoteFSURI = remoteFS.getUri();
-    String remoteFSPath = remoteFSURI.getPath();
-    String relativePath = path.substring(remoteFSPath.length());
+    String relativePath = path; 
     if (!relativePath.startsWith(File.separator)) {
       relativePath = File.separator + relativePath;
     }
-    String cacheURIPath = writeCacheFS.getUri().toString();
-    if (cacheURIPath.endsWith(File.separator)){
-      cacheURIPath = cacheURIPath.substring(0, cacheURIPath.length() - 1); 
-    }
-    return new Path(cacheURIPath + relativePath);  
+    Path cacheWorkDir = writeCacheFS.getWorkingDirectory();
+    String fullPath = cacheWorkDir + relativePath;
+    Path cachePath =  new Path(fullPath);  
+
+    return writeCacheFS.makeQualified(cachePath);
   }
   
-  @SuppressWarnings("unused")
-  private Path cachingToRemotePath(Path cachingPath) {
+  @VisibleForTesting
+  Path cachingToRemotePath(Path cachingPath) {
     URI cachingURI = cachingPath.toUri();
     String path = cachingURI.getPath();
     URI cachingFSURI = writeCacheFS.getUri();
@@ -591,8 +465,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   private void checkEviction() {
-    double storageOccupied = (double)this.writeCacheSize.get()/ this.writeCacheMaxSize;
-    if (storageOccupied > 0.95) {
+    double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
+    if (storageOccupied > writeCacheEvictionStartsAt) {
       Thread t = evictor.get();
       if (t != null && t.isAlive()) {
         return ; // eviction is in progress
@@ -667,15 +541,15 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   private void evictDataPages(Path path) {
     Long size = null;
+    LOG.debug("Evict data pages for {}", path);
+
     try {
       size = (Long) metaCache.get(path.toString());
-      if (size == null) {
-        size = this.remoteFS.getFileStatus(path).getLen();
-      }
     } catch (IOException e) {
       LOG.error("Evictor failed", e);
       return;
     }
+
     // Initialize base key
     String hash =  md5().hashString(path.toString(), UTF_8).toString();
     byte[] baseKey = new byte[hash.length() + Utils.SIZEOF_LONG];
@@ -685,7 +559,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     while (off < size) {
       byte[] key = getKey(baseKey, off);
       try {
-        dataCache.delete(key);
+        boolean res = dataCache.delete(key);
+        LOG.debug("Delete {} result={}", off,  res);
       } catch (IOException e) {
         LOG.error("Evictor failed", e);
         return;
@@ -714,35 +589,299 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (!this.writeCacheEnabled) {
       return;
     }
-    double usedStorageRatio = (double) this.writeCacheSize.get() / this.writeCacheMaxSize;
-    // TODO: do we need to make this configurable?
+
+    double usedStorageRatio = (double) writeCacheSize.get() / writeCacheMaxSize;
+    
     try {
-      while (usedStorageRatio > 0.9) {
+      while (usedStorageRatio > writeCacheEvictionStopsAt) {
         String fileName = writeCacheFileList.evictionCandidate();
         
         LOG.debug("Evict file {}", fileName);
-        
         if (fileName == null) {
           LOG.error("Write cache file list is empty");
           return;
         }
-        long len = writeCacheFileList.get(fileName);
-        
-        this.writeCacheSize.addAndGet(-len);
+        Long len = writeCacheFileList.get(fileName);
         Path p = new Path(fileName);
+        boolean exists = this.writeCacheFS.exists(p);
+        if (len == null && exists) {
+          len = this.writeCacheFS.getFileStatus(p).getLen();
+        } else if (!exists){
+          writeCacheFileList.remove(fileName);
+          continue;
+        }
         // Delete file in the local write cache
         try {
-          this.writeCacheFS.delete(p, false);
-          writeCacheFileList.remove(fileName);
+          boolean res = this.writeCacheFS.delete(p, false);
+          if (res) {
+            writeCacheFileList.remove(fileName);
+            writeCacheSize.addAndGet(-len);
+          }
         } catch (IOException e) {
           LOG.error("File evictor failed to delete file {}", fileName);
           throw e;
         }
         // Recalculate cache usage ratio
-        usedStorageRatio = (double) this.writeCacheSize.get() / this.writeCacheMaxSize;
+        usedStorageRatio = (double) writeCacheSize.get() / writeCacheMaxSize;
       }
     } finally {
       evictor.set(null);
     }
   }
+  
+  @VisibleForTesting
+  public static Cache getDataCache() {
+    return dataCache;
+  }
+  
+  @VisibleForTesting
+  public static ObjectCache getMetaCache() {
+    return metaCache;
+  }
+  
+  @VisibleForTesting
+  public static FIFOCache<String,Long> getFIFOCache() {
+    return writeCacheFileList;
+  }
+  
+  @VisibleForTesting
+  public static void clearFSCache() {
+    cachedFS.clear();
+  }
+  
+  @VisibleForTesting
+  public void shutdown() throws IOException {
+    saveDataCache();
+    saveMetaCache();
+    saveFIFOCache();
+    dispose();
+    clearFSCache();
+  }
+  
+  /**********************************************************************************
+   * 
+   * Hadoop FileSystem API
+   * 
+   **********************************************************************************/
+  
+  /**
+   * Open file 
+   * @param path path to the file
+   * @param bufferSize buffer size
+   * @return input stream
+   * @throws Exception
+   */
+  
+  public FSDataInputStream open(Path path, int bufferSize) throws IOException {
+
+    LOG.debug("Open {}", path);
+        
+    Callable<FSDataInputStream> remoteCall = () -> {
+      return remoteFS.open(path, bufferSize);
+    };
+    Path writeCachePath = remoteToCachingPath(path);
+    Callable<FSDataInputStream> cacheCall = () -> {
+      return writeCacheFS == null? null: writeCacheFS.open(writeCachePath, bufferSize);
+    };
+    
+    Long fileLength = (Long) metaCache.get(path.toString()); 
+    if (fileLength == null) {
+      FileStatus fs = remoteFS.getFileStatus(path);
+      fileLength = fs.getLen();
+      metaCache.put(path.toString(), fileLength, 0 /* No expiration*/);
+    }
+    FSDataInputStream cachingInputStream =
+        new FSDataInputStream(new SidecarCachingInputStream(dataCache, path, remoteCall, cacheCall, fileLength,
+            dataPageSize, ioBufferSize));
+    return cachingInputStream;
+  }
+  /**
+   * Create an FSDataOutputStream at the indicated Path with write-progress
+   * reporting.
+   * @param f the file name to open
+   * @param permission the permission to set.
+   * @param overwrite if a file with this name already exists, then if true,
+   *   the file will be overwritten, and if false an error will be thrown.
+   * @param bufferSize the size of the buffer to be used.
+   * @param replication required block replication for the file.
+   * @param blockSize the requested block size.
+   * @param progress the progress reporter.
+   * @throws IOException in the event of IO related errors.
+   * @see #setPermission(Path, FsPermission)
+   */
+  @SuppressWarnings("deprecation")
+  public FSDataOutputStream create(Path f, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+  
+    LOG.debug("Create {}", f);
+    FSDataOutputStream remoteOut = 
+        this.remoteFS.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
+    if (!this.writeCacheEnabled) {
+      return remoteOut;
+    }
+    
+    Path cachePath = remoteToCachingPath(f);
+    FSDataOutputStream cacheOut = null;
+    try {
+        cacheOut = this.writeCacheFS.create(cachePath, overwrite, bufferSize, replication, blockSize);
+    } catch (IOException e) {
+      LOG.error("Write cache create file failed", e);
+      return remoteOut;
+    }
+
+    // Create file moniker
+    createMoniker(cachePath);
+    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
+  }
+  
+  private void createMoniker(Path cachePath) throws IOException {
+    Path p = new Path(cachePath.toString() + ".toupload");
+    FSDataOutputStream os = this.writeCacheFS.create(p);
+    os.close();
+  }
+
+  private void deleteMoniker(Path cachePath) throws IOException {
+    Path p = new Path(cachePath.toString() + ".toupload");
+    this.writeCacheFS.delete(p, false);
+  }
+  
+  @SuppressWarnings("deprecation")
+  public FSDataOutputStream createNonRecursive(Path path, FsPermission permission,
+      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    
+    LOG.debug("Create non-recursive {}", path);
+    FSDataOutputStream remoteOut = 
+        this.remoteFS.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize, progress);
+
+    if (!this.writeCacheEnabled) {
+      return remoteOut;
+    }
+    
+    Path cachePath = remoteToCachingPath(path);
+    FSDataOutputStream cacheOut = null;
+    try {
+        this.writeCacheFS.create(cachePath, true, bufferSize, replication, blockSize);
+    } catch(IOException e) {
+      LOG.error("Write cache create file failed", e);
+      return remoteOut;
+    }
+    
+    // Create file moniker
+    createMoniker(cachePath);
+    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
+  }
+
+  @SuppressWarnings("deprecation")
+  public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
+      throws IOException {
+    // Object storage FS do not support this operation, at least S3
+    LOG.debug("Append {}", f);
+    FSDataOutputStream remoteOut = this.remoteFS.append(f, bufferSize, progress);
+
+    // Usually append is not supported by cloud object stores
+    if (!this.writeCacheEnabled) {
+      return remoteOut;
+    }
+    Path cachePath = remoteToCachingPath(f);
+    
+    FSDataOutputStream cacheOut = null;
+    try {
+      cacheOut = this.writeCacheFS.append(cachePath, bufferSize);
+    } catch(Exception e) {
+      // File does not exists or some other I/O issue
+      return remoteOut;
+    }
+    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
+  }
+
+  public boolean rename(Path src, Path dst) throws IOException {
+    LOG.debug("Rename {} to {}", src, dst);
+    // Check if src is file
+    boolean isFile = metaCache.exists(src.toString());
+    boolean result = this.remoteFS.rename(src, dst);
+    if (result && isFile) {
+      // Clear data pages cache
+      Runnable r = () -> {
+        evictDataPages(src);
+        // Update meta cache
+        try {
+          String key = src.toString();
+          Long len = (Long) metaCache.get(key);
+          if (len != null) {
+            //TODO: is it correct?
+            metaCache.delete(key);
+            metaCache.put(dst.toString(), len, 0);
+          }
+        } catch (IOException e) {
+          LOG.error("rename", e);
+        }
+      };
+      unboundedThreadPool.submit(r);
+    }
+    if (!this.writeCacheEnabled) {
+      return result;
+    }
+    
+    Path cacheSrc = null, cacheDst = null;
+    try {
+      cacheSrc = remoteToCachingPath(src);
+      cacheDst = remoteToCachingPath(dst);
+      if (this.writeCacheFS.exists(cacheSrc)) {
+        this.writeCacheFS.rename(cacheSrc, cacheDst);
+        // Remove from write-cache file list
+        writeCacheFileList.remove(cacheSrc.toString());
+      }
+    } catch (IOException e) {
+      LOG.error(String.format("Failed to rename %s to %s", cacheSrc, cacheDst), e);
+    }   
+    return result;
+  }
+
+  public boolean delete(Path f, boolean recursive) throws IOException {
+
+    LOG.debug("Delete {} recursive={}", f, recursive);
+
+    boolean isFile = metaCache.exists(f.toString());
+    boolean result = this.remoteFS.delete(f, recursive);
+   
+    // Check if f is file
+    if (isFile && result) {
+      // Clear data pages cache
+      Runnable r = () -> {
+        evictDataPages(f);
+        // Delete from meta
+        try {
+          metaCache.delete(f.toString());
+        } catch (IOException e) {
+          //TODO
+        }
+      };
+      unboundedThreadPool.submit(r);
+    } else {
+      metaCache.delete(f.toString());
+    }
+
+    if (this.writeCacheEnabled) {
+      Path p = remoteToCachingPath(f);
+      try {
+        this.writeCacheFS.delete(p, recursive);
+        // Delete from cache file list
+        writeCacheFileList.remove(p.toString());
+      } catch (IOException e) {
+        LOG.error("Delete write-cache-fs path={} failed", f, e);
+      }
+    }
+    return result;
+  }
+
+  public void close() throws IOException {
+    this.remoteFS.close();
+    if (this.writeCacheFS != null) {
+      this.writeCacheFS.close();
+    }
+  }
+  
+  
 }
