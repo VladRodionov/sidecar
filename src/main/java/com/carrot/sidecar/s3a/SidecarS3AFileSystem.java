@@ -30,9 +30,10 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
 import org.apache.hadoop.util.Progressable;
 
+import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
-public class SidecarS3AFileSystem extends S3AFileSystem {
+public class SidecarS3AFileSystem extends S3AFileSystem implements MetaDataCacheable{
 
   private SidecarCachingFileSystem sidecar;
   

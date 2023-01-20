@@ -41,6 +41,8 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem {
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
+    //TODO: do we need to initialize if it was cached? 
+    //Can we use single instance per process?
     this.sidecar.initialize(name, originalConf);
   }
 
