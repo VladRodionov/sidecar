@@ -504,16 +504,20 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   @Override
   public void closingRemote(SidecarCachingOutputStream stream) {
     long length = stream.length();
-    Path path = stream.getRemotePath();
+    final Path path = stream.getRemotePath();
     // Add path - length to the FIFO cache
-    Path cachePath = remoteToCachingPath(path);
-    writeCacheFileList.put(cachePath.toString(), length);
+    if (writeCacheEnabled) {
+      Path cachePath = remoteToCachingPath(path);
+      writeCacheFileList.put(cachePath.toString(), length);
+    }
     
     Runnable r = () -> {
       try {
         FSDataOutputStream os = stream.getRemoteStream();
         os.close();
-        deleteMoniker(cachePath);
+        if (writeCacheEnabled) {
+          deleteMoniker(remoteToCachingPath(path));
+        }
         if (metaCacheable) {
           metaCache.put(path.toString(), length, 0);
         }
@@ -535,8 +539,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       if (cacheOut != null) {
         cacheOut.close();
         Path remotePath = stream.getRemotePath();
-        cachePath = remoteToCachingPath(remotePath);
-        writeCacheFS.delete(cachePath, false);
+        if (this.writeCacheEnabled) {
+          cachePath = remoteToCachingPath(remotePath);
+          writeCacheFS.delete(cachePath, false);
+        }
       }
     } catch (IOException ee) {
       // swallow
