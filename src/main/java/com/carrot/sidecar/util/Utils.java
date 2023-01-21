@@ -29,4 +29,44 @@ public class Utils {
     }
     return sb.toString();
   }
+  
+  /**
+   * Straw man - optimize
+   * @param v long value
+   * @return bytes
+   */
+  public static byte[] toBytes(long v) {
+    return Long.toString(v).getBytes();
+  }
+  
+  /**
+   * Optimize
+   * @param bytes byte array representing long
+   * @return long value
+   */
+  public static long fromBytes(byte[] bytes) {
+    return Long.parseLong(new String(bytes));
+  }
+  
+  /**
+   * Checks arguments
+   * @param arg boolean value
+   * @param message message 
+   */
+  public static void checkArgument(boolean arg, String message) {
+    if (arg == false) {
+      throw new IllegalArgumentException(message);
+    }
+  }
+  
+  /**
+   * Checks state
+   * @param value boolean value
+   * @param message message 
+   */
+  public static void checkState(boolean value, String message) {
+    if (value == false) {
+      throw new IllegalStateException(message);
+    }
+  }
 }

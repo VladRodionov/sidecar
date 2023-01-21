@@ -39,7 +39,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
-import com.carrot.cache.ObjectCache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.SidecarConfig;
@@ -111,10 +110,10 @@ public class TestSidecarCachingOutputStream {
     SidecarCachingFileSystem.dispose();
     checkState(cacheDirectory != null);
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
-    LOG.info("Deleted %s", cacheDirectory);
+    LOG.info("Deleted {}", cacheDirectory);
     checkState(writeCacheDirectory != null);
     TestUtils.deletePathRecursively(writeCacheDirectory.getPath());
-    LOG.info("Deleted %s", writeCacheDirectory);
+    LOG.info("Deleted {}", writeCacheDirectory);
   }
   
   private SidecarCachingFileSystem cachingFileSystem(boolean useWriteCache)
@@ -149,13 +148,14 @@ public class TestSidecarCachingOutputStream {
     SidecarCachingFileSystem cachingFileSystem = SidecarCachingFileSystem.get(testingFileSystem);
     cachingFileSystem.initialize(uri, configuration);
     
+    cachingFileSystem.setMetaCacheEnabled(true);
     // Verify initialization
     Cache dataCache = SidecarCachingFileSystem.getDataCache();
     assertEquals(dataCacheSize, dataCache.getMaximumCacheSize());
     assertEquals(dataCacheSegmentSize, dataCache.getEngine().getSegmentSize());
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     assertEquals(metaCacheSize, metaCache.getMaximumCacheSize());
-    assertEquals(metaCacheSegmentSize, metaCache.getNativeCache().getEngine().getSegmentSize());
+    assertEquals(metaCacheSegmentSize, metaCache.getEngine().getSegmentSize());
     
     return cachingFileSystem;
   }
@@ -217,7 +217,7 @@ public class TestSidecarCachingOutputStream {
     assertEquals(n, total);
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     assertTrue(metaCache.size() > 0);
     assertTrue(cache.size() > 0);
     
@@ -230,6 +230,6 @@ public class TestSidecarCachingOutputStream {
     // wait a bit after delete
     Thread.sleep(1000);
     assertTrue(cache.activeSize() == 0);
-    assertTrue(metaCache.getNativeCache().activeSize() == 0);
+    assertTrue(metaCache.activeSize() == 0);
   }
 }

@@ -43,7 +43,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
-import com.carrot.cache.ObjectCache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.FIFOCache;
@@ -222,8 +221,8 @@ public class TestSidecarCachingFileSystem {
     Path p = new Path(workDir, "test-file");
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);
-    System.out.printf("remote working directory %s\n", fs.getRemoteFS().getWorkingDirectory());
-    System.out.printf("write c working directory %s\n", fs.getWriteCacheFS().getWorkingDirectory());
+    LOG.info("remote working directory {}", fs.getRemoteFS().getWorkingDirectory());
+    LOG.info("write c working directory {}", fs.getWriteCacheFS().getWorkingDirectory());
     
     monikerExists(p);
     
@@ -253,7 +252,7 @@ public class TestSidecarCachingFileSystem {
     assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
 
     Cache cache = SidecarCachingFileSystem.getDataCache();
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
     
@@ -265,7 +264,7 @@ public class TestSidecarCachingFileSystem {
     
     // Little trick to get right size
     assertTrue(cache.activeSize() == 0);
-    assertTrue(metaCache.getNativeCache().activeSize() == 0);
+    assertTrue(metaCache.activeSize() == 0);
     
   }
   
@@ -276,8 +275,8 @@ public class TestSidecarCachingFileSystem {
     Path p = new Path(workDir, "test-file");
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);
-    System.out.printf("remote working directory %s\n", fs.getRemoteFS().getWorkingDirectory());
-    System.out.printf("write c working directory %s\n", fs.getWriteCacheFS().getWorkingDirectory());
+    LOG.info("remote working directory {}", fs.getRemoteFS().getWorkingDirectory());
+    LOG.info("write c working directory {}", fs.getWriteCacheFS().getWorkingDirectory());
     
     monikerExists(p);
     
@@ -300,14 +299,14 @@ public class TestSidecarCachingFileSystem {
     sid.close();
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     FIFOCache<String, Long> fifoCache = SidecarCachingFileSystem.getFIFOCache();
     
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
     assertTrue(fifoCache.size() == 1);
     
-    assertTrue(metaCache.exists(p.toString()));
+    assertTrue(metaCache.exists(p.toString().getBytes()));
     Path pp = fs.remoteToCachingPath(p);
     assertTrue(fifoCache.get(pp.toString()) != null);
     
@@ -324,7 +323,7 @@ public class TestSidecarCachingFileSystem {
     assertTrue(cache.size() == 1);
     assertTrue(fifoCache.size() == 1);
     
-    assertTrue(metaCache.exists(p.toString()));
+    assertTrue(metaCache.exists(p.toString().getBytes()));
     pp = fs.remoteToCachingPath(p);
     assertTrue(fifoCache.get(pp.toString()) != null);
     
@@ -342,8 +341,8 @@ public class TestSidecarCachingFileSystem {
     Path p = new Path(workDir, "test-file");
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);
-    System.out.printf("remote working directory %s\n", fs.getRemoteFS().getWorkingDirectory());
-    System.out.printf("write c working directory %s\n", fs.getWriteCacheFS().getWorkingDirectory());
+    LOG.info("remote working directory {}", fs.getRemoteFS().getWorkingDirectory());
+    LOG.info("write c working directory {}", fs.getWriteCacheFS().getWorkingDirectory());
     
     monikerExists(p);
     
@@ -364,7 +363,7 @@ public class TestSidecarCachingFileSystem {
     assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
     
@@ -385,7 +384,7 @@ public class TestSidecarCachingFileSystem {
     
     assertTrue(cache.activeSize() == 0);
     // We removed src from meta, but added dst - so still size is 1
-    assertTrue(metaCache.getNativeCache().activeSize() == 1);
+    assertTrue(metaCache.activeSize() == 1);
   }
   
   public void testFileSystemAppend() throws Exception {
@@ -434,14 +433,14 @@ public class TestSidecarCachingFileSystem {
     // 
     SidecarCachingFileSystem cachingFileSystem = SidecarCachingFileSystem.get(testingFileSystem);
     cachingFileSystem.initialize(uri, configuration);
-    
+    cachingFileSystem.setMetaCacheEnabled(true);
     // Verify initialization
     Cache dataCache = SidecarCachingFileSystem.getDataCache();
     assertEquals(dataCacheSize, dataCache.getMaximumCacheSize());
     assertEquals(dataCacheSegmentSize, dataCache.getEngine().getSegmentSize());
-    ObjectCache metaCache = SidecarCachingFileSystem.getMetaCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     assertEquals(metaCacheSize, metaCache.getMaximumCacheSize());
-    assertEquals(metaCacheSegmentSize, metaCache.getNativeCache().getEngine().getSegmentSize());
+    assertEquals(metaCacheSegmentSize, metaCache.getEngine().getSegmentSize());
     
     return cachingFileSystem;
   }

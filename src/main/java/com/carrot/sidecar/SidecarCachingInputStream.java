@@ -14,6 +14,9 @@
 package com.carrot.sidecar;
 
 import static com.google.common.hash.Hashing.md5;
+import static com.carrot.sidecar.util.Utils.checkArgument;
+import static com.carrot.sidecar.util.Utils.checkState;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.EOFException;
@@ -34,7 +37,7 @@ import org.apache.hadoop.fs.Seekable;
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
 import com.carrot.cache.util.Utils;
-import com.google.common.base.Preconditions;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -445,9 +448,9 @@ public class SidecarCachingInputStream extends InputStream
    */
   private int readInternal0(byte[] bytesBuffer, int offset, int length,
                            long position, boolean isPositionedRead) throws IOException {
-    Preconditions.checkArgument(length >= 0, "length should be non-negative");
-    Preconditions.checkArgument(offset >= 0, "offset should be non-negative");
-    Preconditions.checkArgument(position >= 0, "position should be non-negative");
+    checkArgument(length >= 0, "length should be non-negative");
+    checkArgument(offset >= 0, "offset should be non-negative");
+    checkArgument(position >= 0, "position should be non-negative");
     
     if (length == 0) {
       return 0;
@@ -585,10 +588,9 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public void seek(long pos) throws IOException {
     checkIfClosed();
-    Preconditions.checkArgument(pos >= 0, "Seek position is negative: %s", pos);
-    Preconditions
-        .checkArgument(pos <= this.fileLength,
-            "Seek position (%s) exceeds the length of the file (%s)", pos, this.fileLength);
+    checkArgument(pos >= 0, "Seek position is negative: " + pos);
+    checkArgument(pos <= this.fileLength,
+            "Seek position " + pos + " exceeds the length of the file " + this.fileLength);
     if (pos == this.position) {
       return;
     }
@@ -614,7 +616,7 @@ public class SidecarCachingInputStream extends InputStream
    * Convenience method to ensure the stream is not closed.
    */
   private void checkIfClosed() {
-    Preconditions.checkState(!closed, "Cannot operate on a closed stream");
+    checkState(!closed, "Cannot operate on a closed stream");
   }
 
   private synchronized int readExternalPage(long position)

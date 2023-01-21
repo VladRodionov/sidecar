@@ -54,7 +54,6 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Builder;
 import com.carrot.cache.Cache;
-import com.carrot.cache.ObjectCache;
 import com.carrot.cache.controllers.LRCRecyclingSelector;
 import com.carrot.cache.index.CompactBaseIndexFormat;
 import com.carrot.cache.io.BaseDataWriter;
@@ -64,7 +63,6 @@ import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.FIFOCache;
 import com.carrot.sidecar.util.SidecarConfig;
-import com.google.common.annotations.VisibleForTesting;
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
   
@@ -80,7 +78,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   /*
    *  Caches remote file lengths by file path
    */
-  private static ObjectCache metaCache; // singleton
+  private static Cache metaCache; // singleton
 
   /*
    *  FIFO cache for cached on write filenames with their lengths (if enabled) 
@@ -215,6 +213,18 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   }
   
+  /**
+   * Used for testing
+   * @param b
+   */
+  void setMetaCacheEnabled(boolean b) {
+    this.metaCacheable = b;
+  }
+  
+  boolean isMetaCacheEnabled() {
+    return this.metaCacheable;
+  }
+  
   public void initialize(URI uri, Configuration configuration) throws IOException {
     try {
       if (inited) {
@@ -335,7 +345,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       String rootDir = config.getGlobalCacheRootDir();
       long maxSize = config.getCacheMaximumSize(META_CACHE_NAME);
       int dataSegmentSize = (int) config.getCacheSegmentSize(META_CACHE_NAME);
-      metaCache = ObjectCache.loadCache(rootDir, META_CACHE_NAME);
+      metaCache = Cache.loadCache(rootDir, META_CACHE_NAME);
       LOG.info("Loaded cache={} from={} name={}", metaCache, rootDir, META_CACHE_NAME);
       if (metaCache == null) {
         Builder builder = new Builder(META_CACHE_NAME);
@@ -348,18 +358,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
             .withMemoryDataReader(BaseMemoryDataReader.class.getName())
             .withFileDataReader(BaseFileDataReader.class.getName())
             .withMainQueueIndexFormat(CompactBaseIndexFormat.class.getName());       
-        metaCache = builder.buildObjectMemoryCache();
+        metaCache = builder.buildMemoryCache();
       }
     } catch (IOException e) {
       LOG.error("loadMetaCache error", e);
       throw e;
     }  
-    
-    Class<?> keyClass = String.class;
-    Class<?> valueClass = Long.class;
-   
-    metaCache.addKeyValueClasses(keyClass, valueClass);
-    
+        
     if (sconfig.isJMXMetricsEnabled()) {
       LOG.info("SidecarCachingFileSystem JMX enabled for meta-data cache");
       String domainName = config.getJMXMetricsDomainName();
@@ -430,16 +435,15 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.info("Shutting down cache[{}] done in {}ms", META_CACHE_NAME, (end - start));
   }
   
-  @VisibleForTesting
   public static void dispose() {
     dataCache.dispose();
-    metaCache.getNativeCache().dispose();
+    metaCache.dispose();
     cachedFS.clear();
     dataCache = null;
     metaCache = null;
+    writeCacheSize.set(0);
   }
 
-  @VisibleForTesting
   Path remoteToCachingPath(Path remotePath) {
     URI remoteURI = remotePath.toUri();
     String path = remoteURI.getPath();
@@ -455,7 +459,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   // Not used
-  @VisibleForTesting
   Path cachingToRemotePath(Path cachingPath) {
     URI cachingURI = cachingPath.toUri();
     String path = cachingURI.getPath();
@@ -508,6 +511,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     // Add path - length to the FIFO cache
     if (writeCacheEnabled) {
       Path cachePath = remoteToCachingPath(path);
+      /*DEBUG*/ LOG.debug("FIFO PUT {} {}",cachePath.toString(), length);
       writeCacheFileList.put(cachePath.toString(), length);
     }
     
@@ -519,7 +523,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           deleteMoniker(remoteToCachingPath(path));
         }
         if (metaCacheable) {
-          metaCache.put(path.toString(), length, 0);
+          metaCache.put(path.toString().getBytes(), com.carrot.sidecar.util.Utils.toBytes(length), 0);
         }
       } catch (IOException e) {
         //TODO - how to handle exception?
@@ -585,9 +589,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
-  private long getFileLength(Path p) throws IOException {
+  private Long getFileLengthFromCache(Path p) throws IOException {
+    byte[] buf = new byte[512];
+    byte[] key = p.toString().getBytes();
+    int size = (int) metaCache.get(key, 0, key.length, true, buf, 0);
+    if (size < 0) {
+      return null;
+    } else if (size > buf.length) {
+      buf = new byte[size];
+      size = (int) metaCache.get(key, 0, key.length, true, buf, 0);
+    }
+    return Long.parseLong(new String(buf, 0, size));
+  }
+  
+  private Long getFileLength(Path p) throws IOException {
     if (metaCacheable) {
-      Long len = (Long) metaCache.get(p.toString());
+      Long len = (Long) getFileLengthFromCache(p);
       if (len != null) {
         return len;
       }
@@ -596,7 +613,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FileStatus fs = remoteFS.getFileStatus(p);
     long len = fs.getLen();
     if (metaCacheable) {
-      metaCache.put(p.toString(), len, 0);
+      metaCache.put(p.toString().getBytes(), 
+        com.carrot.sidecar.util.Utils.toBytes(len), 0);
     }
     return len;
   }
@@ -604,7 +622,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private boolean isFile(Path p) throws IOException {
     boolean result;
     if (metaCacheable) {
-      result = metaCache.exists(p.toString());
+      result = metaCache.exists(p.toString().getBytes());
       if (result) {
         return true;
       }
@@ -612,7 +630,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FileStatus fs = remoteFS.getFileStatus(p);
     result = fs.isFile();
     if (result && metaCacheable) {
-      metaCache.put(p.toString(), fs.getLen(), 0);
+      metaCache.put(p.toString().getBytes(), 
+        com.carrot.sidecar.util.Utils.toBytes(fs.getLen()), 0);
     }
     return result;
   }
@@ -639,12 +658,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
 
     double usedStorageRatio = (double) writeCacheSize.get() / writeCacheMaxSize;
-    
+    LOG.info("Write cache file number={} write cache size={} writeCacheMaxSize={}",
+      writeCacheFileList.size(), writeCacheSize.get(), writeCacheMaxSize );
     try {
       while (usedStorageRatio > writeCacheEvictionStopsAt) {
         String fileName = writeCacheFileList.evictionCandidate();
-        
-        LOG.debug("Evict file {}", fileName);
+        LOG.info("Evict file {}", fileName);
         if (fileName == null) {
           LOG.error("Write cache file list is empty");
           return;
@@ -677,27 +696,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
-  @VisibleForTesting
   public static Cache getDataCache() {
     return dataCache;
   }
   
-  @VisibleForTesting
-  public static ObjectCache getMetaCache() {
+  public static Cache getMetaCache() {
     return metaCache;
   }
   
-  @VisibleForTesting
   public static FIFOCache<String,Long> getFIFOCache() {
     return writeCacheFileList;
   }
   
-  @VisibleForTesting
   public static void clearFSCache() {
     cachedFS.clear();
   }
   
-  @VisibleForTesting
   public void shutdown() throws IOException {
     saveDataCache();
     saveMetaCache();
@@ -853,10 +867,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           // TODO: is it correct?
           if (metaCacheable) {
             String key = src.toString();
-            Long len = (Long) metaCache.get(key);
+            Long len = (Long) getFileLengthFromCache(src);
             if (len != null) {
-              metaCache.delete(key);
-              metaCache.put(dst.toString(), len, 0);
+              metaCache.delete(key.getBytes());
+              metaCache.put(dst.toString().getBytes(), 
+                com.carrot.sidecar.util.Utils.toBytes(len), 0);
             }
           }
         } catch (IOException e) {
@@ -879,7 +894,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         writeCacheFileList.remove(cacheSrc.toString());
       }
     } catch (IOException e) {
-      LOG.error(String.format("Failed to rename %s to %s", cacheSrc, cacheDst), e);
+      LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);
     }
     return result;
   }
@@ -888,7 +903,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
     LOG.debug("Delete {} recursive={}", f, recursive);
 
-    boolean isFile = metaCache.exists(f.toString());
+    boolean isFile = metaCache.exists(f.toString().getBytes());
     boolean result = this.remoteFS.delete(f, recursive);
    
     // Check if f is file
@@ -899,7 +914,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         // Delete from meta
         try {
           if (metaCacheable) {
-            metaCache.delete(f.toString());
+            metaCache.delete(f.toString().getBytes());
           }
         } catch (IOException e) {
           //TODO: this thing is serious
@@ -928,6 +943,4 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.writeCacheFS.close();
     }
   }
-  
-  
 }

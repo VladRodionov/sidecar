@@ -200,22 +200,22 @@ public class TestUtils {
   }
 
   public static void printStats(Cache cache) {
-    LOG.info("Cache[%s]: storage size=%d data size=%d items=%d hit rate=%f, puts=%d, bytes written=%d\n",
+    LOG.info("Cache[{}]: storage size={} data size={} items={} hit rate={}, puts={}, bytes written={}",
              cache.getName(), cache.getStorageAllocated(), cache.getStorageUsed(), cache.size(),
              cache.getHitRate(), cache.getTotalWrites(), cache.getTotalWritesSize());
     Stats stats = Scavenger.getStatisticsForCache(cache.getName());
-    LOG.info("Scavenger [%s]: runs=%d scanned=%d freed=%d written back=%d empty segments=%d\n", 
+    LOG.info("Scavenger [{}]: runs={} scanned={} freed={} written back={} empty segments={}", 
       cache.getName(), stats.getTotalRuns(), stats.getTotalBytesScanned(), 
       stats.getTotalBytesFreed(), stats.getTotalBytesScanned() - stats.getTotalBytesFreed(),
       stats.getTotalEmptySegments());
     
     cache = cache.getVictimCache();
     if (cache != null) {
-      LOG.info("Cache[%s]: storage size=%d data size=%d items=%d hit rate=%f, puts=%d, bytes written=%d\n",
+      LOG.info("Cache[{}]: storage size={} data size={} items={} hit rate={}, puts={}, bytes written={}\n",
         cache.getName(), cache.getStorageAllocated(), cache.getStorageUsed(), cache.size(),
         cache.getHitRate(), cache.getTotalWrites(), cache.getTotalWritesSize());
       stats = Scavenger.getStatisticsForCache(cache.getName());
-      LOG.info("Scavenger [%s]: runs=%d scanned=%d freed=%d written back=%d empty segments=%d\n", 
+      LOG.info("Scavenger [{}]: runs={} scanned={} freed={} written back={} empty segments={}\n", 
         cache.getName(), stats.getTotalRuns(), stats.getTotalBytesScanned(), 
         stats.getTotalBytesFreed(), stats.getTotalBytesScanned() - stats.getTotalBytesFreed(),
         stats.getTotalEmptySegments());

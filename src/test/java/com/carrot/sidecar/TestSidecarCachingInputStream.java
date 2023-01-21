@@ -90,7 +90,7 @@ public class TestSidecarCachingInputStream {
     int javaVersion = Utils.getJavaVersion();
     if (javaVersion < 11) {
       skipTest = true;
-      LOG.warn("Skipping " + TestSidecarCachingInputStream.class.getName() + " java version 11 and above is required");
+      LOG.warn("Skipping {} java version 11 and above is required", TestSidecarCachingInputStream.class.getName());
       return;
     }
     sourceFile = TestUtils.createTempFile();
@@ -179,7 +179,7 @@ public class TestSidecarCachingInputStream {
   public void testSidecarCachingInputStreamACDisabled () throws Exception {
     if (skipTest) return;
 
-    System.out.printf("Java version=%s\n", Utils.getJavaVersion());
+    LOG.info("Java version={}", Utils.getJavaVersion());
     this.cache = createCache(false);
     runTestRandomAccess();
   }
@@ -196,7 +196,7 @@ public class TestSidecarCachingInputStream {
   public void testCarrotCachingInputStreamACEnabled () throws IOException {
     if (skipTest) return;
 
-    System.out.printf("Java version=%s\n", Utils.getJavaVersion());
+    LOG.info("Java version={}", Utils.getJavaVersion());
     this.cache = createCache(true);
     Runnable r = () -> {
       try {
@@ -313,18 +313,13 @@ public class TestSidecarCachingInputStream {
         }
         assertTrue(result);
         if (i > 0 && i % 1000 == 0) {
-          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} loop={}", 
-            Thread.currentThread().getName(), i, offset, requestSize,
-            (t2 - t1) / 1000, (t3 - t2) / 1000, (endLoop - startLoop)/ 1000);
-          System.out.printf("%s: read %d offset=%d size=%d direct read=%d cache read=%d sample=%d loop=%d\n", 
+          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={}", 
             Thread.currentThread().getName(), i, offset, requestSize,
             (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000);
         }
       }
       long endTime = System.currentTimeMillis();
-      LOG.info("Test finished in {}ms total read={}", (endTime - startTime), totalRead);
-      System.out.printf("Test finished in %dms total read=%d", (endTime - startTime), totalRead);
-      
+      LOG.info("Test finished in {}ms total read={}", (endTime - startTime), totalRead);      
       TestUtils.printStats(cache);
     }
   }

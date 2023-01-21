@@ -83,14 +83,14 @@ public class TestSidecarCachingInputStreamStress {
   public void tearDown() {
 
       sourceFile.delete();
-      LOG.info("Deleted %s", sourceFile.getAbsolutePath());
+      LOG.info("Deleted {}", sourceFile.getAbsolutePath());
   }
   
   @Before
   public void setup()
           throws IOException
   {
-    LOG.info("%s BeforeMethod", Thread.currentThread().getName());  
+    LOG.info("{} BeforeMethod", Thread.currentThread().getName());  
     this.cacheDirectory = createTempDirectory("carrot_cache").toUri();
       Epoch.reset();
   }
@@ -101,7 +101,7 @@ public class TestSidecarCachingInputStreamStress {
     cache.dispose();
     checkState(cacheDirectory != null);
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
-    LOG.info("Deleted %s", cacheDirectory);
+    LOG.info("Deleted {}", cacheDirectory);
   }
   
   private Cache createCache(boolean acEnabled) throws IOException {
@@ -122,7 +122,7 @@ public class TestSidecarCachingInputStreamStress {
     }
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     cache = TestUtils.createDataCacheFromHdfsConfiguration(configuration);
-    LOG.info("Recycling selector=%s\n", cache.getEngine().getRecyclingSelector().getClass().getName());
+    LOG.info("Recycling selector={}", cache.getEngine().getRecyclingSelector().getClass().getName());
     
     boolean metricsEnabled = cacheConfig.isJMXMetricsEnabled();
     if (metricsEnabled) {
@@ -152,7 +152,7 @@ public class TestSidecarCachingInputStreamStress {
 
   @Test
   public void testCarrotCachingInputStreamACEnabled () throws Exception {
-    System.out.printf("Java version=%d\n", Utils.getJavaVersion());
+    LOG.info("Java version={}", Utils.getJavaVersion());
     this.cache = createCache(true);
     Runnable r = () -> {
       try {
@@ -229,17 +229,17 @@ public class TestSidecarCachingInputStreamStress {
         totalRead += requestSize;
         boolean result = Utils.compareTo(buffer, 0, requestSize, controlBuffer, 0, requestSize) == 0;
         if (!result) {
-          LOG.error("i=%d file length=%d offset=%d requestSize=%d", i, fileSize, offset, requestSize);
+          LOG.error("i={} file length={} offset={} requestSize={}", i, fileSize, offset, requestSize);
         }
         assertTrue(result);
         if (i > 0 && i % 10000 == 0) {
-          LOG.info("%s: read %d offset=%d size=%d direct read=%d cache read=%d", 
+          LOG.info("{}: read {} offset={} size={} direct read={} cache read={}", 
             Thread.currentThread().getName(), i, offset, requestSize,
             (t2 - t1) / 1000, (t3 - t2) / 1000);
         }
       }
       long endTime = System.currentTimeMillis();
-      LOG.info("Test finished in %dms total read=%d", (endTime - startTime), totalRead);
+      LOG.info("Test finished in {}ms total read={}", (endTime - startTime), totalRead);
       TestUtils.printStats(cache);
     }
   }
