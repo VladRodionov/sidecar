@@ -598,15 +598,23 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (metaCacheable) {
       metaCache.put(p.toString(), len, 0);
     }
-    return fs.getLen();
+    return len;
   }
   
   private boolean isFile(Path p) throws IOException {
+    boolean result;
     if (metaCacheable) {
-      return metaCache.exists(p.toString());
+      result = metaCache.exists(p.toString());
+      if (result) {
+        return true;
+      }
     }
     FileStatus fs = remoteFS.getFileStatus(p);
-    return fs.isFile();
+    result = fs.isFile();
+    if (result && metaCacheable) {
+      metaCache.put(p.toString(), fs.getLen(), 0);
+    }
+    return result;
   }
   
   private byte[] getKey(byte[] baseKey, long offset) {
@@ -899,11 +907,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         }
       };
       unboundedThreadPool.submit(r);
-    } else {
-      if (metaCacheable) {
-        metaCache.delete(f.toString());
-      }
-    }
+    } 
 
     if (this.writeCacheEnabled) {
       Path p = remoteToCachingPath(f);

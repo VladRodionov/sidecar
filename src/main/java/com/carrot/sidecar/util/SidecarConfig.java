@@ -78,7 +78,6 @@ public class SidecarConfig extends Properties{
   }
   
   public synchronized static SidecarConfig fromHadoopConfiguration(Configuration conf) {
-    
     SidecarConfig config = new SidecarConfig();
     Iterator<Map.Entry<String, String>> it = conf.iterator();
     while (it.hasNext()) {
@@ -99,8 +98,12 @@ public class SidecarConfig extends Properties{
     return instance;
   }
   
+  public static String toCarrotPropertyName(String cacheName, String carrotName) {
+    return cacheName + "." + carrotName;
+  }
+  
   private static boolean isSidecarPropertyName(String name) {
-    return name.indexOf("sidecar") >= 0;
+    return name.indexOf("sidecar") == 0; // starts with side car
   }
   
   /**
