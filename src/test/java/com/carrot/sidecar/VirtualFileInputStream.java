@@ -15,6 +15,7 @@ package com.carrot.sidecar;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.Seekable;
@@ -25,7 +26,6 @@ public class VirtualFileInputStream extends InputStream implements
   long fileLength;
   boolean closed;
   long pos;
-  
   public VirtualFileInputStream(long fileLength) throws IOException {
     this.fileLength = fileLength;
   }
@@ -43,6 +43,7 @@ public class VirtualFileInputStream extends InputStream implements
 
   private int fillBuffer(final long position, final byte[] buffer, final int offset, int length) {
     length = (int) Math.min(length,  fileLength - position);
+    
     for(int i = offset; i < offset + length; i++) {
       buffer[i] = (byte)((i + position) % 256);
     }

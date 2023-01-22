@@ -13,17 +13,16 @@
  */
 package com.carrot.sidecar;
 
-import static com.google.common.hash.Hashing.md5;
 import static com.carrot.sidecar.util.Utils.checkArgument;
 import static com.carrot.sidecar.util.Utils.checkState;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.Callable;
 
 import javax.annotation.concurrent.NotThreadSafe;
@@ -134,7 +133,11 @@ public class SidecarCachingInputStream extends InputStream
       this.bufferSize += this.pageSize;
     }
     this.fileLength = fileLength;
-    initBaseKey(path);
+    try {
+      initBaseKey(path);
+    } catch (NoSuchAlgorithmException e) {
+      // Should not happen
+    }
     // Must always be > 0 for performance 
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
@@ -159,10 +162,12 @@ public class SidecarCachingInputStream extends InputStream
     return null;
   }
   
-  private void initBaseKey(Path path) {
-    String hash =  md5().hashString(path.toString(), UTF_8).toString();
-    this.baseKey = new byte[hash.length() + Utils.SIZEOF_LONG];
-    System.arraycopy(hash.getBytes(), 0, this.baseKey, 0, hash.length());
+  private void initBaseKey(Path path) throws NoSuchAlgorithmException {
+    MessageDigest md = MessageDigest.getInstance("MD5");
+    md.update(path.toString().getBytes());
+    byte[] digest = md.digest();
+    this.baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
+    System.arraycopy(digest, 0, this.baseKey, 0, digest.length);
   }
   
   @Override
@@ -231,6 +236,20 @@ public class SidecarCachingInputStream extends InputStream
     int bytesRead = (int) this.cache.getRange(key, 0, key.length, currentPageOffset, bytesToReadInPage,
         true, bytesBuffer, offset);
     if (bytesRead > 0) {
+      if (bytesRead > length) {
+        // FileIOEngine can not read even key-value sizes into provided buffer
+        // length < bytesBuffer.length - offset
+        byte[] buf = new byte[bytesRead];
+        // repeat call
+        bytesRead = (int) this.cache.getRange(key, 0, key.length, currentPageOffset, bytesToReadInPage,
+          true, buf, 0);
+        if (bytesRead > length) {
+          throw new IOException(String.format("fatal: bytes read=%d requested=%d page offset=%d to read in page=%d\n",
+            bytesRead, length, currentPageOffset, bytesToReadInPage));
+        }
+        //Copy back to a provided buffer
+        System.arraycopy(buf, 0, bytesBuffer, offset, bytesRead);
+      }
       return bytesRead;
     }
     // on local cache miss, read from an external storage. This will always make

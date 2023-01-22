@@ -64,23 +64,24 @@ public class TestSidecarCachingInputStream {
   
   protected static boolean skipTest = false;
   
-  protected static long fileSize = 10L * 1024 * 1024 * 1024;
+  protected static long fileSize = 100L * 1024 * 1024 * 1024;
 
   private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStream.class);
 
   private URI cacheDirectory;
     
-  private long cacheSize = 4L * 1024 * 1024 * 1024;
+  private long cacheSize = 20L * 1024 * 1024 * 1024;
   
-  private int cacheSegmentSize = 20 * 1024 * 1024;
+  private int cacheSegmentSize = 64 * 1024 * 1024;
   
   private double zipfAlpha = 0.9;
   
   private Cache cache;
   
-  int pageSize = 1 << 20; // 1MB
-  
-  int ioBufferSize = 2 << 20; // 2MB
+  int pageSize = 1 << 12; // 1MB
+  // If access is random buffer size must be small
+  // reads must be aligned to a page size
+  int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
   
   String domainName;
   
@@ -204,6 +205,7 @@ public class TestSidecarCachingInputStream {
       } catch (Exception e) {
         LOG.error("testCarrotCachingInputStreamACEnabled",e);
         fail();
+        System.exit(-1);
       }
     };
     
@@ -312,7 +314,7 @@ public class TestSidecarCachingInputStream {
           LOG.error("i={} file length={} offset={} requestSize={}", i, fileSize, offset, requestSize);
         }
         assertTrue(result);
-        if (i > 0 && i % 1000 == 0) {
+        if (i > 0 && i % 100000 == 0) {
           LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={}", 
             Thread.currentThread().getName(), i, offset, requestSize,
             (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000);
@@ -389,7 +391,7 @@ public class TestSidecarCachingInputStream {
 
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
-      int requestSize = 8 * 1024;
+      int requestSize = Math.min(pageSize, 8 * 1024);
       int numRecords = 1000;
       byte[] buffer = new byte[pageSize];
       byte[] controlBuffer = new byte[pageSize];

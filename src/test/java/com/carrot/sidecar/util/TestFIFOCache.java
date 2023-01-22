@@ -25,11 +25,11 @@ import org.junit.Test;
 
 public class TestFIFOCache {
   int num = 10;
-  FIFOCache<String, Long> cache;
+  LRUCache<String, Long> cache;
   
   @Before
   public void setUp() {
-    cache = new FIFOCache<>();
+    cache = new LRUCache<>();
     for (int i = 0; i < num; i++) {
       cache.put("key" + i, (long) i);
     }
@@ -55,7 +55,7 @@ public class TestFIFOCache {
     cache.save(baos);
     byte[] buf = baos.toByteArray();
     ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-    cache = new FIFOCache<>();
+    cache = new LRUCache<>();
     cache.load(bais);
     verify();
   }
