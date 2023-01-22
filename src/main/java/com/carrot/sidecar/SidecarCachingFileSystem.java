@@ -42,6 +42,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -139,7 +140,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   /*
    *  Is cache-on-write enabled
    */
-  private boolean writeCacheEnabled;
+  private volatile boolean writeCacheEnabled;
   
   
   /**
@@ -220,8 +221,32 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     this.metaCacheable = b;
   }
   
+  /**
+   * Is meta cache enabled
+   * @return true or false
+   */
   boolean isMetaCacheEnabled() {
     return this.metaCacheable;
+  }
+  
+  
+  /**
+   * Set enable/disable write cache (Eviction thread can temporarily disable write cache)
+   * @param b true or false
+   */
+  void setWriteCacheEnabled(boolean b) {
+    if (this.writeCacheFS == null) {
+      return;
+    }
+    this.writeCacheEnabled = b;
+  }
+  
+  /**
+   * Is write cache enabled
+   * @return 
+   */
+  boolean isWriteCacheEnabled() {
+    return this.writeCacheEnabled;
   }
   
   public void initialize(URI uri, Configuration configuration) throws IOException {
@@ -270,7 +295,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         SidecarCachingInputStream.initIOPools(this.ioPoolSize);
         loadDataCache();
         loadMetaCache();
-        loadFIFOCache();
+        loadWriteCacheFileListCache();
         
         if (!sconfig.isTestEnabled()) {
           Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -321,7 +346,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return this.remoteFS;
   }
   
-  private void loadFIFOCache() throws IOException {
+  private void loadWriteCacheFileListCache() throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
     String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
     String fileName = snapshotDir + File.separator + LRUCache.FILE_NAME;
@@ -499,8 +524,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   @Override
   public void bytesWritten(SidecarCachingOutputStream stream, long bytes) {
-    writeCacheSize.addAndGet(bytes);
-    checkEviction();
+    if (isWriteCacheEnabled()) {
+      writeCacheSize.addAndGet(bytes);
+      checkEviction();
+    }
   }
 
   @Override
@@ -568,9 +595,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.error("Evictor failed for path {}", path);
       return;
     }
-    
     byte[] baseKey = getBaseKey(path);
-    
     long off = 0;
     while (off < size) {
       byte[] key = getKey(baseKey, off);
@@ -672,14 +697,27 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     try {
       while (usedStorageRatio > writeCacheEvictionStopsAt) {
         String fileName = writeCacheFileList.evictionCandidate();
-        LOG.info("Evict file {}", fileName);
         if (fileName == null) {
           LOG.error("Write cache file list is empty");
           return;
         }
+        LOG.info("Evict file {}", fileName);
         Long len = writeCacheFileList.get(fileName);
         Path p = new Path(fileName);
         boolean exists = this.writeCacheFS.exists(p);
+        Path moniker = getFileMonikerPath(p);
+        if (this.writeCacheFS.exists(moniker)) {
+          // Disable write cache temporarily
+          setWriteCacheEnabled(false);
+          // Log warning
+          LOG.warn("Disable write cache, eviction candidate {} has not been synced to remote yet", p);
+          // wait 1 minute
+          try {
+            Thread.sleep(60000);
+          } catch (InterruptedException e) {
+          } 
+          continue;
+        }
         if (len == null && exists) {
           len = this.writeCacheFS.getFileStatus(p).getLen();
         } else if (!exists){
@@ -702,6 +740,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       }
     } finally {
       evictor.set(null);
+      if (isWriteCacheEnabled() == false) {
+        // Enable write cache if it was disabled
+        setWriteCacheEnabled(true);
+      }
     }
   }
   
@@ -780,7 +822,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       boolean overwrite, int bufferSize, short replication, long blockSize,
       Progressable progress) throws IOException {
   
-    LOG.debug("Create {}", f);
+    LOG.debug("Create file: {}", f);
     FSDataOutputStream remoteOut = 
         this.remoteFS.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
     if (!this.writeCacheEnabled) {
@@ -801,15 +843,29 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
   
+  public boolean mkdirs(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    LOG.debug("Create dir: {}", path);
+    boolean result = this.remoteFS.mkdirs(path, permission);
+    if (result && this.writeCacheFS != null) {
+      this.writeCacheFS.mkdirs(path); // we use default permission
+    }
+    return result;
+  }
+  
   private void createMoniker(Path cachePath) throws IOException {
-    Path p = new Path(cachePath.toString() + ".toupload");
+    Path p = getFileMonikerPath(cachePath);
     FSDataOutputStream os = this.writeCacheFS.create(p);
     os.close();
   }
 
   private void deleteMoniker(Path cachePath) throws IOException {
-    Path p = new Path(cachePath.toString() + ".toupload");
+    Path p = getFileMonikerPath(cachePath);
     this.writeCacheFS.delete(p, false);
+  }
+  
+  private Path getFileMonikerPath(Path file) {
+    return new Path(file.toString() + ".toupload");
   }
   
   @SuppressWarnings("deprecation")
@@ -936,9 +992,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (this.writeCacheEnabled) {
       Path p = remoteToCachingPath(f);
       try {
-        this.writeCacheFS.delete(p, recursive);
         // Delete from cache file list
         writeCacheFileList.remove(p.toString());
+        this.writeCacheFS.delete(p, recursive);
       } catch (IOException e) {
         LOG.error("Delete write-cache-fs path={} failed", f, e);
       }

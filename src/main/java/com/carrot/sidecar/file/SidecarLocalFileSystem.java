@@ -25,6 +25,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -84,6 +85,13 @@ public class SidecarLocalFileSystem extends LocalFileSystem {
   public boolean delete(Path f, boolean recursive) throws IOException {
     return sidecar.delete(f, recursive);
   }
+  
+  @Override
+  public boolean mkdirs(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    return sidecar.mkdirs(path, permission);
+  }
+  
 
   @Override
   public void close() throws IOException {

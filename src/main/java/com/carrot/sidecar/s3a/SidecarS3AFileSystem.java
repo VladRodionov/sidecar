@@ -25,6 +25,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
@@ -81,6 +82,12 @@ public class SidecarS3AFileSystem extends S3AFileSystem implements MetaDataCache
     return sidecar.delete(f, recursive);
   }
 
+  @Override
+  public boolean mkdirs(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    return sidecar.mkdirs(path, permission);
+  }
+  
   @Override
   public void close() throws IOException {
     super.close();

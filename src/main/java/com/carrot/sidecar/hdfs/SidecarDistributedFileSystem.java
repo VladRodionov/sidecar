@@ -25,6 +25,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
@@ -41,7 +42,6 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem {
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
-    //TODO: do we need to initialize if it was cached? 
     //Can we use single instance per process?
     this.sidecar.initialize(name, originalConf);
   }
@@ -82,10 +82,14 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem {
   }
 
   @Override
+  public boolean mkdirs(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    return sidecar.mkdirs(path, permission);
+  }
+  
+  @Override
   public void close() throws IOException {
     super.close();
     sidecar.close();
   }
-  
-
 }
