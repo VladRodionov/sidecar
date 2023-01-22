@@ -17,9 +17,6 @@
  */
 package com.carrot.sidecar;
 
-import static com.google.common.hash.Hashing.md5;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -27,6 +24,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -61,7 +60,7 @@ import com.carrot.cache.io.BaseFileDataReader;
 import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.util.FIFOCache;
+import com.carrot.sidecar.util.LRUCache;
 import com.carrot.sidecar.util.SidecarConfig;
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
@@ -81,9 +80,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private static Cache metaCache; // singleton
 
   /*
-   *  FIFO cache for cached on write filenames with their lengths (if enabled) 
+   *  LRU cache for cached on write filenames with their lengths (if enabled) 
    */
-  private static FIFOCache<String, Long> writeCacheFileList;
+  private static LRUCache<String, Long> writeCacheFileList;
   
   /*
    * Caching {FS.URI, sidecar instance}  
@@ -324,10 +323,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   private void loadFIFOCache() throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
-    String snapshotDir = config.getSnapshotDir(FIFOCache.NAME);
-    String fileName = snapshotDir + File.separator + FIFOCache.FILE_NAME;
+    String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
+    String fileName = snapshotDir + File.separator + LRUCache.FILE_NAME;
     File file = new File(fileName);
-    writeCacheFileList = new FIFOCache<>();
+    writeCacheFileList = new LRUCache<>();
 
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
@@ -404,18 +403,18 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   void saveFIFOCache() throws IOException {
     if (writeCacheFileList != null) {
       long start = System.currentTimeMillis();
-      LOG.info("Shutting down cache[{}]", FIFOCache.NAME);
+      LOG.info("Shutting down cache[{}]", LRUCache.NAME);
       CarrotConfig config = CarrotConfig.getInstance();
-      String snapshotDir = config.getSnapshotDir(FIFOCache.NAME);
+      String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
       FileOutputStream fos = new FileOutputStream(snapshotDir + 
-      File.separator + FIFOCache.FILE_NAME);
+      File.separator + LRUCache.FILE_NAME);
       // Save total write cache size
       DataOutputStream dos = new DataOutputStream(fos);
       dos.writeLong(writeCacheSize.get());
       writeCacheFileList.save(dos);
       // do not close - it was closed already
       long end = System.currentTimeMillis();
-      LOG.info("Shutting down cache[{}] done in {}ms",FIFOCache.NAME , (end - start));
+      LOG.info("Shutting down cache[{}] done in {}ms",LRUCache.NAME , (end - start));
     }
   }
 
@@ -569,11 +568,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.error("Evictor failed for path {}", path);
       return;
     }
-
-    // Initialize base key
-    String hash =  md5().hashString(path.toString(), UTF_8).toString();
-    byte[] baseKey = new byte[hash.length() + Utils.SIZEOF_LONG];
-    System.arraycopy(hash.getBytes(), 0, baseKey, 0, hash.length());
+    
+    byte[] baseKey = getBaseKey(path);
     
     long off = 0;
     while (off < size) {
@@ -587,6 +583,19 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       }
       off += dataPageSize;
     }
+  }
+  
+  private byte[] getBaseKey(Path path)  {
+    MessageDigest md = null;
+    try {
+      md = MessageDigest.getInstance("MD5");
+    } catch (NoSuchAlgorithmException e) {
+    }
+    md.update(path.toString().getBytes());
+    byte[] digest = md.digest();
+    byte[] baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
+    System.arraycopy(digest, 0, baseKey, 0, digest.length);
+    return baseKey;
   }
   
   private Long getFileLengthFromCache(Path p) throws IOException {
@@ -704,7 +713,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return metaCache;
   }
   
-  public static FIFOCache<String,Long> getFIFOCache() {
+  public static LRUCache<String,Long> getFIFOCache() {
     return writeCacheFileList;
   }
   

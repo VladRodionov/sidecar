@@ -23,21 +23,22 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class FIFOCache<K, V> {
-  public static String NAME = "fifo-cache";
+public class LRUCache<K, V> {
+  public static String NAME = "lru-cache";
   public static String FILE_NAME = "fifo.cache";
   private static final int INIT_CAPACITY = 2000;
   private static final float INIT_LOAD_FACTOR = 0.75f;
   private static final boolean ACCESS_ORDERED = false;
 
-  protected Map<K, V> mFIFOCache =
+  protected Map<K, V> mLRUCache =
       Collections.synchronizedMap(new LinkedHashMap<>(INIT_CAPACITY,
           INIT_LOAD_FACTOR, ACCESS_ORDERED));
   
-  public FIFOCache() {}
+  public LRUCache() {}
   
   /**
    * Put key value
@@ -46,7 +47,7 @@ public class FIFOCache<K, V> {
    * @return previous value
    */
   public V put(K key, V value) {
-    return mFIFOCache.put(key, value);
+    return mLRUCache.put(key, value);
   }
   
   /**
@@ -55,7 +56,7 @@ public class FIFOCache<K, V> {
    * @return value object
    */
   public V get(K key) {
-    return mFIFOCache.get(key);
+    return mLRUCache.get(key);
   }
   
   /**
@@ -64,7 +65,7 @@ public class FIFOCache<K, V> {
    * @return value
    */
   public V remove(K key) {
-    return mFIFOCache.remove(key);
+    return mLRUCache.remove(key);
   }
   
   /**
@@ -72,7 +73,14 @@ public class FIFOCache<K, V> {
    * @return eviction candidate
    */
   public K evictionCandidate() {
-    return mFIFOCache.keySet().iterator().next();
+    synchronized(mLRUCache) {
+      Iterator<K> it = mLRUCache.keySet().iterator();
+      K retValue = null;
+      if (it.hasNext()) {
+        retValue = it.next();
+      }
+      return retValue;
+    }
   }
   
   /**
@@ -80,12 +88,12 @@ public class FIFOCache<K, V> {
    * @return size
    */
   public int size() {
-    return mFIFOCache.size();
+    return mLRUCache.size();
   }
   
   public void save(OutputStream os) throws IOException {
     ObjectOutputStream oos = new ObjectOutputStream(os);
-    oos.writeObject(mFIFOCache);
+    oos.writeObject(mLRUCache);
     oos.close();
   }
   
@@ -93,7 +101,7 @@ public class FIFOCache<K, V> {
   public void load(InputStream is) throws IOException{
     ObjectInputStream ois = new ObjectInputStream(is);
     try {
-      this.mFIFOCache = (Map<K, V>) ois.readObject();
+      this.mLRUCache = (Map<K, V>) ois.readObject();
     } catch (ClassNotFoundException e) {
       throw new IOException(e);
     }
