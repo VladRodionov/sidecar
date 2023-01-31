@@ -94,6 +94,10 @@ public class SidecarCachingInputStream extends InputStream
   /** End of file reached */
   private boolean EOF = false;
   
+  private long hits = 0;
+  
+  private long gets = 0;
+  
   /* Pool which keeps I/O buffers to read from cache directly */
   private static ObjectPool<byte[]> ioPool = new ObjectPool<byte[]>(32);
   
@@ -141,6 +145,10 @@ public class SidecarCachingInputStream extends InputStream
     // Must always be > 0 for performance 
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
+  }
+  
+  public double getHitRate() {
+    return (double) (this.hits  - this.bhits)/ this.gets;
   }
   
   private byte[] getPageBuffer() {
@@ -233,31 +241,35 @@ public class SidecarCachingInputStream extends InputStream
     int bytesToReadInPage = Math.min(bytesLeftInPage, length);
     byte[] key = getKey(currentPage * this.pageSize);
     
-    int bytesRead = (int) this.cache.getRange(key, 0, key.length, currentPageOffset, bytesToReadInPage,
-        true, bytesBuffer, offset);
+    int bytesRead = (int) dataPageGetRange(key,  currentPageOffset, bytesToReadInPage, bytesBuffer, offset);
     if (bytesRead > 0) {
       if (bytesRead > length) {
         // FileIOEngine can not read even key-value sizes into provided buffer
         // length < bytesBuffer.length - offset
         byte[] buf = new byte[bytesRead];
         // repeat call
-        bytesRead = (int) this.cache.getRange(key, 0, key.length, currentPageOffset, bytesToReadInPage,
-          true, buf, 0);
+        bytesRead = (int) dataPageGetRange(key, currentPageOffset, bytesToReadInPage, buf, 0);
         if (bytesRead > length) {
           throw new IOException(String.format("fatal: bytes read=%d requested=%d page offset=%d to read in page=%d\n",
             bytesRead, length, currentPageOffset, bytesToReadInPage));
         }
         //Copy back to a provided buffer
-        System.arraycopy(buf, 0, bytesBuffer, offset, bytesRead);
+        // do not assume that item still exists - it can be deleted by GC in - between
+        // in this case -1 will be returned
+        if(bytesRead > 0) {
+          System.arraycopy(buf, 0, bytesBuffer, offset, bytesRead);
+        }
       }
-      return bytesRead;
+      if (bytesRead > 0) {
+        return bytesRead;
+      }
     }
     // on local cache miss, read from an external storage. This will always make
     // progress or throw an exception
     // This is assumption that external buffer size == page size (???)
     int size = readExternalPage(position);
     if (size > 0) {
-      this.cache.put(key, 0, key.length, this.pageBuffer, 0, size, 0L /* no expire */);
+      dataPagePut(key, 0, key.length, this.pageBuffer, 0, size);
       bytesToReadInPage = Math.min(bytesToReadInPage, size - currentPageOffset);
       System.arraycopy(this.pageBuffer, currentPageOffset, bytesBuffer, offset, bytesToReadInPage);
       // Can be negative
@@ -310,7 +322,7 @@ public class SidecarCachingInputStream extends InputStream
     long pos = r.start;
     for (int i = 0; i < n; i++) {
       byte[] key = getKey(pos);
-      res[i] = this.cache.exists(key);
+      res[i] =  dataPageExists(key); 
       pos += this.pageSize;
     }
     return res;
@@ -376,17 +388,52 @@ public class SidecarCachingInputStream extends InputStream
     return n;
   }
   
+  long bhits = 0;
+  
+  /******************************
+   * 
+   * Data cache API access
+   * @throws IOException 
+   *****************************/
+  
+  private long dataPageGetRange(byte[] key, int rangeStart, int rangeSize, byte[] buffer, int bufferOffset) 
+      throws IOException {
+    return cache.getRange(key, 0, key.length, rangeStart, rangeSize, true, buffer, bufferOffset);
+  }
+  
+  private boolean dataPageExists(byte[] key) {
+    return cache.exists(key);
+  }
+  
+  private boolean dataPagePut(byte[] key, int keyOffset, int keySize, byte[] value, int valueOffset, int valueSize)
+    throws IOException
+  {
+    return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
+  }
+  
+  /*****************************/
+  /**
+   * Read internal
+   * @param bytesBuffer
+   * @param offset
+   * @param length
+   * @param position
+   * @param isPositionedRead
+   * @return
+   * @throws IOException
+   */
   private int readInternal(byte[] bytesBuffer, int offset, int length,
       long position, boolean isPositionedRead) throws IOException {
     
     // Adjust length
     // just in case
     length = (int) Math.min(length,  this.fileLength - position);
-    
+    this.gets++;
     Range pageRange = getPageRange(position, length);
     boolean[] in_cache = inCache(pageRange);
     boolean fullCache = count(in_cache) == in_cache.length;
     if (fullCache) {
+      this.hits++;
       // Basically reads data from cache, but in case if any page is missing it will be 
       // loaded from other sources (write cache or remote FS)
       return readInternal0(bytesBuffer, offset, length, position, isPositionedRead);
@@ -396,6 +443,8 @@ public class SidecarCachingInputStream extends InputStream
     boolean[] union = union(in_cache, in_buffer);
     fullCache = count(union) == union.length;
     if (fullCache) {
+      this.hits++;
+      this.bhits ++;
       // Rest pages are in the buffer - we have to cache them
       boolean[] diff = diff(in_cache, in_buffer);
       long pos = pageRange.start;
@@ -403,7 +452,7 @@ public class SidecarCachingInputStream extends InputStream
         if (diff[i]) {
           byte[] key = getKey(pos);
           int size = (int) Math.min(this.pageSize, this.bufferEndOffset - pos);
-          this.cache.put(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), size, 0);
+          dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), size);
         }
         pos += this.pageSize;
       }
@@ -436,7 +485,7 @@ public class SidecarCachingInputStream extends InputStream
       if (!in_cache[i]) {
         byte[] key = getKey(pos);
         int size = (int) Math.min(this.pageSize, this.fileLength - pos);
-        this.cache.put(key, 0, key.length, buf, i * this.pageSize, size, 0);
+        dataPagePut(key, 0, key.length, buf, i * this.pageSize, size);
       }
       pos += this.pageSize;
     }

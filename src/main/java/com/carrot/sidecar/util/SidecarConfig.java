@@ -19,6 +19,7 @@ package com.carrot.sidecar.util;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
@@ -27,14 +28,15 @@ import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SidecarConfig extends Properties{
-
-  public final static String DATA_CACHE_NAME = "sidecar-data";
-  public final static String META_CACHE_NAME = "sidecar-meta";
-  
+public class SidecarConfig extends Properties {
   private static final long serialVersionUID = 1L;
-
   private static final Logger LOG = LoggerFactory.getLogger(SidecarConfig.class);
+  
+
+  public final static String DATA_CACHE_FILE_NAME = "sidecar-data-file";
+  public final static String DATA_CACHE_OFFHEAP_NAME = "sidecar-data-offheap";
+  
+  public final static String META_CACHE_NAME = "sidecar-meta-offheap";
   
   public final static String SIDECAR_WRITE_CACHE_ENABLED_KEY = "sidecar.write.cache.enabled";
   
@@ -55,6 +57,24 @@ public class SidecarConfig extends Properties{
   
   public final static String SIDECAR_TEST_MODE_KEY = "sidecar.test.mode"; 
   
+  public final static String SIDECAR_DATA_CACHE_TYPE_KEY = "sidecar.data.cache.type";
+  
+  public final static String SIDECAR_PERSISTENT_CACHE_KEY = "sidecar.cache.persistent";
+  
+  /**
+   * Comma-separated list of regular expressions of directory names in
+   * remote file system, which must be excluded from caching 
+   */
+  public final static String SIDECAR_EXCLUDE_PATH_LIST_KEY = "sidecar.exclude.path.list";
+  
+  /**
+   * Comma-separated list of regular expressions of directory names in
+   * remote file system, which must be included into caching. All other paths will 
+   * be ignored, as well as those defined in in the exclude list
+   * One should specify either exclude list or include list, not both
+   */
+  public final static String SIDECAR_INCLUDE_PATH_LIST_KEY = "sidecar.include.path.list";
+
   public final static boolean DEFAULT_SIDECAR_WRITE_CACHE_ENABLED = false;
   
   public final static long DEFAULT_SIDECAR_WRITE_CACHE_SIZE = 0;
@@ -70,6 +90,10 @@ public class SidecarConfig extends Properties{
   public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "com.sidecar.metrics";
   
   public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
+  
+  public final static CacheType DEFAULT_DATA_CACHE_TYPE = CacheType.FILE;
+  
+  public final static boolean DEFAULT_SIDECAR_PERSISTENT_CACHE = true;
   
   
   private static SidecarConfig instance;
@@ -297,4 +321,102 @@ public class SidecarConfig extends Properties{
     return this;
   }
   
+  /**
+   * Get include path list for cache
+   * @param cacheName cache name
+   * @return list of include paths or null
+   */
+  public String[] getIncludePathList(String cacheName) {
+    String value = getProperty(SIDECAR_INCLUDE_PATH_LIST_KEY);
+    if (value != null) {
+      String[] paths = value.split(",");
+      // clean up
+      Arrays.stream(paths).forEach( x -> x = x.trim());
+      return paths;
+    }
+    return null; // no default value
+  }
+  
+  /**
+   * Set include path list for a cache 
+   * @param cacheName cache name
+   * @param list comma-separated  list of paths (regexes)
+   * @return self
+   */
+  public SidecarConfig setIncludePathList(String cacheName, String list) {
+    setProperty(SIDECAR_INCLUDE_PATH_LIST_KEY, list);
+    return this;
+  }
+  
+  /**
+   * Get exclude path list for cache
+   * @param cacheName cache name
+   * @return list of include paths or null
+   */
+  public String[] getExcludePathList(String cacheName) {
+    String value = getProperty(SIDECAR_INCLUDE_PATH_LIST_KEY);
+    if (value != null) {
+      String[] paths = value.split(",");
+      // clean up
+      Arrays.stream(paths).forEach(x -> x = x.trim());
+      return paths;
+    }
+    return null; // no default value
+  }
+  
+  /**
+   * Set exclude path list for a cache 
+   * @param cacheName cache name
+   * @param list comma-separated list of paths (regexes)
+   * @return self
+   */
+  public SidecarConfig setExcludePathList(String cacheName, String list) {
+    setProperty(SIDECAR_INCLUDE_PATH_LIST_KEY, list);
+    return this;
+  }
+  
+  /** 
+   * Get data cache type
+   * @return data cache type
+   */
+  public CacheType getDataCacheType() {
+    String value = getProperty(SIDECAR_DATA_CACHE_TYPE_KEY);
+    if (value == null) {
+      return DEFAULT_DATA_CACHE_TYPE;
+    }
+    return CacheType.valueOf(value.toUpperCase());
+  }
+  
+  /**
+   * Set data cache type
+   * @param type data cache type
+   * @return self
+   */
+  public SidecarConfig setDataCacheType(CacheType type) {
+    setProperty(SIDECAR_DATA_CACHE_TYPE_KEY, type.getType());
+    return this;
+  }
+  
+  /**
+   * Set cache persistent
+   * @param b true or false
+   * @return self
+   */
+  public SidecarConfig setPersistentCache(boolean b) {
+    setProperty(SIDECAR_PERSISTENT_CACHE_KEY, Boolean.toString(b));
+    return this;
+  }
+  
+  /**
+   * Is cache persistent
+   * @return
+   */
+  public boolean isCachePersistent() {
+    String value = getProperty(SIDECAR_PERSISTENT_CACHE_KEY);
+    if (value != null) {
+      return Boolean.parseBoolean(value);
+    }
+    return DEFAULT_SIDECAR_PERSISTENT_CACHE;
+ 
+  }
 }

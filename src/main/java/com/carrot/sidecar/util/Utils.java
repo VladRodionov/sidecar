@@ -17,6 +17,12 @@
  */
 package com.carrot.sidecar.util;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import com.carrot.cache.util.UnsafeAccess;
+
+
 public class Utils {
 
   public static String join(String[] args, String sep) {
@@ -36,16 +42,9 @@ public class Utils {
    * @return bytes
    */
   public static byte[] toBytes(long v) {
-    return Long.toString(v).getBytes();
-  }
-  
-  /**
-   * Optimize
-   * @param bytes byte array representing long
-   * @return long value
-   */
-  public static long fromBytes(byte[] bytes) {
-    return Long.parseLong(new String(bytes));
+    byte[] buf = new byte[8];
+    UnsafeAccess.putLong(buf, 0, v);
+    return buf;
   }
   
   /**
@@ -69,4 +68,21 @@ public class Utils {
       throw new IllegalStateException(message);
     }
   }
+  
+  /**
+   * TODO: performance testing
+   * @param arr
+   * @return 16 bytes hash array
+   */
+  public static byte[] hashCrypto(byte[] arr) {
+      MessageDigest md = null;
+      try {
+        md = MessageDigest.getInstance("MD5");
+      } catch (NoSuchAlgorithmException e) {
+      }
+      md.update(arr);
+      byte[] digest = md.digest();
+      return digest;
+  }
+  
 }

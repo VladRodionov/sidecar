@@ -33,7 +33,6 @@ import org.apache.hadoop.conf.Configuration;
 
 import com.carrot.cache.Builder;
 import com.carrot.cache.Cache;
-import com.carrot.cache.ObjectCache;
 import com.carrot.cache.Scavenger;
 import com.carrot.cache.Scavenger.Stats;
 import com.carrot.cache.controllers.LRCRecyclingSelector;
@@ -42,6 +41,7 @@ import com.carrot.cache.io.BaseDataWriter;
 import com.carrot.cache.io.BaseFileDataReader;
 import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
+import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 import org.slf4j.Logger;
@@ -139,24 +139,46 @@ public class TestUtils {
       }
     }
     setCacheTypes(config);
-    config.setStartIndexNumberOfSlotsPower(SidecarConfig.DATA_CACHE_NAME, 4);
-    return new Cache(SidecarConfig.DATA_CACHE_NAME, config);
+    config.setStartIndexNumberOfSlotsPower(SidecarConfig.DATA_CACHE_FILE_NAME, 4);
+    config.setStartIndexNumberOfSlotsPower(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, 4);
+    config.setStartIndexNumberOfSlotsPower(SidecarConfig.META_CACHE_NAME, 4);
+    SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
+    CacheType cacheType = sconfig.getDataCacheType();
+    return createCache(config, cacheType);
   }
   
+  private static Cache createCache(CarrotConfig config, CacheType cacheType) throws IOException {
+    switch (cacheType) {
+      case FILE: 
+      case OFFHEAP:
+        return new Cache(cacheType.getCacheName(), config);
+      case HYBRID:
+        Cache parent = new Cache(CacheType.OFFHEAP.getCacheName(), config);
+        Cache victim = new Cache(CacheType.FILE.getCacheName(), config);
+        parent.setVictimCache(victim);
+        return parent;
+    }
+    return null;
+  }
+
   private static void setCacheTypes(CarrotConfig config) {
     String[] names = config.getCacheNames();
     String[] types = config.getCacheTypes();
     
-    String[] newNames = new String[names.length + 2];
+    String[] newNames = new String[names.length + 3];
     System.arraycopy(names, 0, newNames, 0, names.length);
     
-    newNames[newNames.length - 2] = SidecarConfig.DATA_CACHE_NAME;
+    newNames[newNames.length - 3] = SidecarConfig.DATA_CACHE_FILE_NAME;
+    newNames[newNames.length - 2] = SidecarConfig.DATA_CACHE_OFFHEAP_NAME;
     newNames[newNames.length - 1] = SidecarConfig.META_CACHE_NAME;
     
-    String[] newTypes = new String[types.length + 2];
+    
+    String[] newTypes = new String[types.length + 3];
     System.arraycopy(types, 0, newTypes, 0, types.length);
-    newTypes[newTypes.length - 2] = "file";
-    newTypes[newTypes.length - 1] = "offheap";
+    newTypes[newTypes.length - 3] = CacheType.FILE.getType();
+    newTypes[newTypes.length - 2] = CacheType.OFFHEAP.getType();
+    newTypes[newTypes.length - 1] = CacheType.OFFHEAP.getType();;
+    
     
     String cacheNames = com.carrot.sidecar.util.Utils.join(newNames, ",");
     String cacheTypes = com.carrot.sidecar.util.Utils.join(newTypes, ",");
@@ -164,7 +186,7 @@ public class TestUtils {
     config.setCacheTypes(cacheTypes);
   }
   
-  public static ObjectCache createMetaCacheFromHdfsConfiguration(Configuration configuration)
+  public static Cache createMetaCacheFromHdfsConfiguration(Configuration configuration)
       throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
     Iterator<Map.Entry<String, String>> it = configuration.iterator();
@@ -178,7 +200,7 @@ public class TestUtils {
     
     setCacheTypes(config);
     
-    ObjectCache metaCache;
+    Cache metaCache;
     long maxSize = config.getCacheMaximumSize(SidecarConfig.META_CACHE_NAME);
     int dataSegmentSize = (int) config.getCacheSegmentSize(SidecarConfig.META_CACHE_NAME);
     Builder builder = new Builder(SidecarConfig.META_CACHE_NAME);
@@ -190,12 +212,7 @@ public class TestUtils {
         .withMemoryDataReader(BaseMemoryDataReader.class.getName())
         .withFileDataReader(BaseFileDataReader.class.getName())
         .withMainQueueIndexFormat(CompactBaseIndexFormat.class.getName());
-    metaCache = builder.buildObjectMemoryCache();
-
-    Class<?> keyClass = String.class;
-    Class<?> valueClass = Long.class;
-
-    metaCache.addKeyValueClasses(keyClass, valueClass);
+    metaCache = builder.buildMemoryCache();
     return metaCache;
   }
 

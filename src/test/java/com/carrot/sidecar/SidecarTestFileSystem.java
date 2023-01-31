@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.file;
+package com.carrot.sidecar;
 
 import java.io.IOException;
 import java.net.URI;
@@ -31,16 +31,15 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
-import com.carrot.sidecar.SidecarCachingFileSystem;
 /**
  * For testing only
  *
  */
-public class SidecarLocalFileSystem extends LocalFileSystem {
+public class SidecarTestFileSystem extends LocalFileSystem implements CachingFileSystem{
   
   private SidecarCachingFileSystem sidecar;
 
-  public SidecarLocalFileSystem() {}
+  public SidecarTestFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
@@ -55,7 +54,7 @@ public class SidecarLocalFileSystem extends LocalFileSystem {
   public FSDataInputStream open(Path f, int bufferSize) throws IOException {
     return sidecar.open(f, bufferSize);
   }
-
+  
   @Override
   public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
       int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
@@ -98,5 +97,50 @@ public class SidecarLocalFileSystem extends LocalFileSystem {
     super.close();
     sidecar.close();
   }
-  
+
+  @Override
+  public SidecarCachingFileSystem getCachingFileSystem() {
+    return sidecar;
+  }
+
+  @Override
+  public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException {
+    return super.open(f, bufferSize);
+  }
+
+  @Override
+  public FSDataOutputStream createRemote(Path f, FsPermission permission, boolean overwrite,
+      int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
+    return super.create(f, permission, overwrite,
+      bufferSize, replication, blockSize, progress) ;
+  }
+
+  @Override
+  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
+      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    return super.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize, progress);
+  }
+
+  @Override
+  public FSDataOutputStream appendRemote(Path f, int bufferSize, Progressable progress)
+      throws IOException {
+    return super.append(f, bufferSize, progress);
+  }
+
+  @Override
+  public boolean renameRemote(Path src, Path dst) throws IOException {
+    return super.rename(src, dst);
+  }
+
+  @Override
+  public boolean deleteRemote(Path f, boolean recursive) throws IOException {
+    return super.delete(f, recursive);
+  }
+
+  @Override
+  public boolean mkdirsRemote(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    return super.mkdirs(path, permission);
+  }
 }

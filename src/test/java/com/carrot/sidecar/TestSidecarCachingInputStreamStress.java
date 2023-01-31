@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
 
 public class TestSidecarCachingInputStreamStress {
     
-  private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStream.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStreamBase.class);
 
   private URI cacheDirectory;
   
@@ -113,12 +113,12 @@ public class TestSidecarCachingInputStreamStress {
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     
-    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_NAME, cacheSize);
-    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_NAME, cacheSegmentSize);
-    carrotCacheConfig.setCacheEvictionPolicy(SidecarConfig.DATA_CACHE_NAME, SLRUEvictionPolicy.class.getName());
-    carrotCacheConfig.setRecyclingSelector(SidecarConfig.DATA_CACHE_NAME, MinAliveRecyclingSelector.class.getName());
+    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_FILE_NAME, cacheSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_FILE_NAME, cacheSegmentSize);
+    carrotCacheConfig.setCacheEvictionPolicy(SidecarConfig.DATA_CACHE_FILE_NAME, SLRUEvictionPolicy.class.getName());
+    carrotCacheConfig.setRecyclingSelector(SidecarConfig.DATA_CACHE_FILE_NAME, MinAliveRecyclingSelector.class.getName());
     if (acEnabled) {
-      carrotCacheConfig.setAdmissionController(SidecarConfig.DATA_CACHE_NAME, AQBasedAdmissionController.class.getName());
+      carrotCacheConfig.setAdmissionController(SidecarConfig.DATA_CACHE_FILE_NAME, AQBasedAdmissionController.class.getName());
     }
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     cache = TestUtils.createDataCacheFromHdfsConfiguration(configuration);

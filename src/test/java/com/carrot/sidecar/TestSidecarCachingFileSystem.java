@@ -300,7 +300,7 @@ public class TestSidecarCachingFileSystem {
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getFIFOCache();
+    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getLRUCache();
     
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
@@ -318,7 +318,7 @@ public class TestSidecarCachingFileSystem {
     
     cache = SidecarCachingFileSystem.getDataCache();
     metaCache = SidecarCachingFileSystem.getMetaCache();
-    fifoCache = SidecarCachingFileSystem.getFIFOCache();
+    fifoCache = SidecarCachingFileSystem.getLRUCache();
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
     assertTrue(fifoCache.size() == 1);
@@ -417,9 +417,9 @@ public class TestSidecarCachingFileSystem {
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     
     carrotCacheConfig.setGlobalCacheRootDir(cacheDirectory.getPath());
-    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_NAME, dataCacheSize);
+    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_FILE_NAME, dataCacheSize);
     carrotCacheConfig.setCacheMaximumSize(SidecarConfig.META_CACHE_NAME, metaCacheSize);
-    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_NAME, dataCacheSegmentSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_FILE_NAME, dataCacheSegmentSize);
     carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSegmentSize);
     
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);

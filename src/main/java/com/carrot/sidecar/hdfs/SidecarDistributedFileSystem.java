@@ -31,9 +31,10 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.util.Progressable;
 
+import com.carrot.sidecar.CachingFileSystem;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
-public class SidecarDistributedFileSystem extends DistributedFileSystem {
+public class SidecarDistributedFileSystem extends DistributedFileSystem implements CachingFileSystem{
   private SidecarCachingFileSystem sidecar;
   
   public SidecarDistributedFileSystem() {}
@@ -91,5 +92,51 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem {
   public void close() throws IOException {
     super.close();
     sidecar.close();
+  }
+
+  @Override
+  public SidecarCachingFileSystem getCachingFileSystem() {
+    return sidecar;
+  }
+  
+  @Override
+  public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException {
+    return super.open(f, bufferSize);
+  }
+
+  @Override
+  public FSDataOutputStream createRemote(Path f, FsPermission permission, boolean overwrite,
+      int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
+    return super.create(f, permission, overwrite,
+      bufferSize, replication, blockSize, progress) ;
+  }
+
+  @Override
+  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
+      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    return super.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize, progress);
+  }
+
+  @Override
+  public FSDataOutputStream appendRemote(Path f, int bufferSize, Progressable progress)
+      throws IOException {
+    return super.append(f, bufferSize, progress);
+  }
+
+  @Override
+  public boolean renameRemote(Path src, Path dst) throws IOException {
+    return super.rename(src, dst);
+  }
+
+  @Override
+  public boolean deleteRemote(Path f, boolean recursive) throws IOException {
+    return super.delete(f, recursive);
+  }
+
+  @Override
+  public boolean mkdirsRemote(Path path, FsPermission permission)
+      throws IOException, FileAlreadyExistsException {
+    return super.mkdirs(path, permission);
   }
 }

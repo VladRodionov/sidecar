@@ -15,7 +15,6 @@ package com.carrot.sidecar;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.Seekable;

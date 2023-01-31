@@ -45,6 +45,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.BlockingThreadPoolExecutorService;
@@ -60,21 +61,31 @@ import com.carrot.cache.io.BaseDataWriter;
 import com.carrot.cache.io.BaseFileDataReader;
 import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
+import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
+import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.LRUCache;
 import com.carrot.sidecar.util.SidecarConfig;
+import static com.carrot.sidecar.util.SidecarConfig.DATA_CACHE_FILE_NAME;
+import static com.carrot.sidecar.util.SidecarConfig.META_CACHE_NAME;
+import static com.carrot.sidecar.util.Utils.hashCrypto;
+import static com.carrot.sidecar.util.Utils.toBytes;
+import static com.carrot.sidecar.util.Utils.join;
+
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
   
-  private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);
-
-  private final static String DATA_CACHE_NAME = SidecarConfig.DATA_CACHE_NAME;
-  private final static String META_CACHE_NAME = SidecarConfig.META_CACHE_NAME;
+  private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);  
   /*
    *  Local cache for remote file data
    */
   private static Cache dataCache; // singleton
   
+  /**
+   * Data cache type (offheap, file, hybrid)
+   */
+  
+  private static CacheType dataCacheType; 
   /*
    *  Caches remote file lengths by file path
    */
@@ -138,7 +149,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private FileSystem writeCacheFS;
   
   /*
-   *  Is cache-on-write enabled
+   *  Is cache-on-write enabled - if yes, remote FS output stream close()
+   *  can be async
    */
   private volatile boolean writeCacheEnabled;
   
@@ -191,26 +203,34 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     this.metaCacheable = fs instanceof MetaDataCacheable;
   }
 
-  private void setCacheTypes(CarrotConfig config) {
+  private void setDataCacheType(CarrotConfig config, CacheType type) {
+    if (type == CacheType.HYBRID) {
+      addCacheType(config, CacheType.OFFHEAP.getCacheName(), CacheType.OFFHEAP.getType());
+      addCacheType(config, CacheType.FILE.getCacheName(), CacheType.FILE.getType());
+    } else {
+      addCacheType(config, type.getCacheName(), type.getType());
+    }
+  }
+  
+  /**
+   * Add single cache type (memory or disk)
+   * @param confug
+   * @param type
+   */
+  private void addCacheType(CarrotConfig config, String cacheName, String type) {
     String[] names = config.getCacheNames();
     String[] types = config.getCacheTypes();
     
-    String[] newNames = new String[names.length + 2];
+    String[] newNames = new String[names.length + 1];
     System.arraycopy(names, 0, newNames, 0, names.length);
-    
-    newNames[newNames.length - 2] = SidecarConfig.DATA_CACHE_NAME;
-    newNames[newNames.length - 1] = SidecarConfig.META_CACHE_NAME;
-    
-    String[] newTypes = new String[types.length + 2];
+    newNames[newNames.length - 1] = cacheName;
+    String[] newTypes = new String[types.length + 1];
     System.arraycopy(types, 0, newTypes, 0, types.length);
-    newTypes[newTypes.length - 2] = "file";
-    newTypes[newTypes.length - 1] = "offheap";
-    
-    String cacheNames = com.carrot.sidecar.util.Utils.join(newNames, ",");
-    String cacheTypes = com.carrot.sidecar.util.Utils.join(newTypes, ",");
+    newTypes[newTypes.length - 1] = type;
+    String cacheNames = join(newNames, ",");
+    String cacheTypes = join(newTypes, ",");
     config.setCacheNames(cacheNames);
     config.setCacheTypes(cacheTypes);
-
   }
   
   /**
@@ -228,7 +248,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   boolean isMetaCacheEnabled() {
     return this.metaCacheable;
   }
-  
   
   /**
    * Set enable/disable write cache (Eviction thread can temporarily disable write cache)
@@ -263,9 +282,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           config.setProperty(name, entry.getValue());
         }
       }
-      // Add two caches (sidecar-data,sidecar-meta) types to the configuration
-      setCacheTypes(config);      
+      
       SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
+      dataCacheType = sconfig.getDataCacheType();
+      // Add two caches (sidecar-data, sidecar-meta) types to the configuration
+      setDataCacheType(config, dataCacheType);      
+      // meta cache is always offheap
+      addCacheType(config, META_CACHE_NAME, "offheap");
       
       this.dataPageSize = (int) sconfig.getDataPageSize();
       this.ioBufferSize = (int) sconfig.getIOBufferSize();
@@ -275,7 +298,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
         URI writeCacheURI = sconfig.getWriteCacheURI();
         if (writeCacheURI != null) {
-          this.writeCacheFS = FileSystem.get(writeCacheURI, configuration);
+          if (sconfig.isTestEnabled()) {
+            //TODO: we should not have this test mode at all
+            this.writeCacheFS = new LocalFileSystem();
+            this.writeCacheFS.initialize(writeCacheURI, configuration);
+          } else {
+            this.writeCacheFS = FileSystem.get(writeCacheURI, configuration);
+          }
           // Set working directory for cache
           this.writeCacheFS.setWorkingDirectory(new Path(writeCacheURI.toString()));
         } else {
@@ -297,20 +326,19 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         loadMetaCache();
         loadWriteCacheFileListCache();
         
-        if (!sconfig.isTestEnabled()) {
+        if (!sconfig.isTestEnabled() && sconfig.isCachePersistent()) {
           Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
               saveDataCache();
               saveMetaCache();
-              saveFIFOCache();
+              saveLRUCache();
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
             }
           }));
           LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
           LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
-          LOG.info("Shutdown hook installed for cache[fifo-cache]");
-
+          LOG.info("Shutdown hook installed for cache[lru-cache]");
         }
       }
       this.inited = true;
@@ -396,13 +424,15 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }  
   }
 
-  private void loadDataCache() throws IOException {
+  private Cache loadDataCache(CacheType type) throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
+    Cache dataCache = null;
     try {
-      dataCache = Cache.loadCache(DATA_CACHE_NAME);
+      dataCache = Cache.loadCache(type.getCacheName());
       if (dataCache != null) {
         LOG.info("Loaded cache[{}] from the path: {}", dataCache.getName(),
           config.getCacheRootDir(dataCache.getName()));
+        return dataCache;
       }
     } catch (IOException e) {
       LOG.error(e.getMessage());
@@ -411,7 +441,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (dataCache == null) {
       // Create new instance
       LOG.info("Creating new cache");
-      dataCache = new Cache(DATA_CACHE_NAME, config);
+      dataCache = new Cache(type.getCacheName(), config);
       LOG.info("Created new cache[{}]", dataCache.getName());
     }
     LOG.info("Initialized cache[{}]", dataCache.getName());
@@ -423,9 +453,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.info("SidecarCachingFileSystem JMX enabled for data cache");
       dataCache.registerJMXMetricsSink(domainName);
     }
+    return dataCache;
   }
   
-  void saveFIFOCache() throws IOException {
+  private Cache loadDataCache() throws IOException {
+    if (dataCacheType != CacheType.HYBRID) {
+      dataCache = loadDataCache(dataCacheType);
+      return dataCache;
+    } else {
+      dataCache = loadDataCache(CacheType.OFFHEAP);
+      Cache victimCache = loadDataCache(CacheType.FILE);
+      dataCache.setVictimCache(victimCache);
+      return dataCache;
+    }
+  }
+  
+  void saveLRUCache() throws IOException {
     if (writeCacheFileList != null) {
       long start = System.currentTimeMillis();
       LOG.info("Shutting down cache[{}]", LRUCache.NAME);
@@ -445,10 +488,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   void saveDataCache() throws IOException {
     long start = System.currentTimeMillis();
-    LOG.info("Shutting down cache[{}]", DATA_CACHE_NAME);
+    LOG.info("Shutting down cache[{}]", DATA_CACHE_FILE_NAME);
     dataCache.shutdown();
     long end = System.currentTimeMillis();
-    LOG.info("Shutting down cache[{}] done in {}ms", DATA_CACHE_NAME, (end - start));
+    LOG.info("Shutting down cache[{}] done in {}ms", DATA_CACHE_FILE_NAME, (end - start));
   }
   
   void saveMetaCache() throws IOException {
@@ -499,6 +542,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return new Path(remoteURIPath + relativePath);
   }
 
+  /**
+   * Single thread only, but I think we are OK?
+   */
   private void checkEviction() {
     double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
     if (storageOccupied > writeCacheEvictionStartsAt) {
@@ -522,6 +568,164 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
+  /*********************************
+   * 
+   * Meta data cache access start
+   *********************************/
+  /**
+   * Check if meta exists in the cache for a particular
+   * file path 
+   * @param p file path
+   * @return true - yes, false - otherwise
+   */
+  private boolean metaExists(Path p) {
+    byte[] hashedKey = hashCrypto(p.toString().getBytes());
+    boolean b = metaExists(hashedKey);
+    return b;
+  }
+  
+  private boolean metaExists(byte[] key) {
+    if (!metaCacheable) {
+      return false;
+    }
+    return metaCache.exists(key);
+  }
+  /**
+   * Put meta (currently, only file length later will add modification time)
+   * @param p file path
+   * @param length file length
+   * @return true on success, false - otherwise
+   */
+  private boolean metaPut(Path p, long length) {
+    byte[] hashedKey = hashCrypto(p.toString().getBytes());
+    return metaPut(hashedKey, length);
+  }
+  
+  /**
+   * TODO: do not ignore failed put - check operation result
+   * @param key hashed key for a path
+   * @param length length of a file
+   * @return true or false
+   */
+  private boolean metaPut(byte[] key, long length) {
+    if (!metaCacheable) {
+      return false;
+    }
+    try {
+      return metaCache.put(key, toBytes(length), 0);
+    } catch (IOException e) {
+      //TODO: proper error handling
+      LOG.error("Can not save file meta", e);
+    }
+    return false;
+  }
+  
+  private long metaGet (Path p) {
+    byte[] hashedKey = hashCrypto(p.toString().getBytes());
+    return metaGet(hashedKey);
+  }
+
+  /**
+   * Length of a file or -1
+   * @param key file key (hashed path value to 16 bytes crypto MD5)
+   * @return
+   */
+  private long metaGet(byte[] key) {
+    if (!metaCacheable) {
+      return -1;
+    }
+    // 32 is sufficient to keep the whole key (16) + value (8) 
+    byte[] buf = new byte[32];
+    try {
+      int size = (int) metaCache.get(key,  0,  key.length, buf, 0);
+      if (size < 0) {
+        // does not exist in the meta cache
+        return -1;
+      }
+      return UnsafeAccess.toLong(buf, 0);
+      
+    } catch (IOException e) {
+    //TODO: proper error handling
+      LOG.error("Can not get file meta", e);
+    }
+    return -1;
+  }
+  
+  private boolean metaDelete(Path p) {
+    byte[] hashedKey = hashCrypto(p.toString().getBytes());
+    return metaDelete(hashedKey);
+  }
+  
+  private boolean metaDelete(byte[] hashedKey) {
+    if (!metaCacheable) {
+      return false;
+    }
+    try {
+      return metaCache.delete(hashedKey);
+    } catch (IOException e) {
+      //TODO: prper exception handling
+      LOG.error("Can not delete file meta", e);
+    }
+    return false;
+  }
+
+  /**
+   * Saves meta, checks if it exists first
+   * TODO: requires putIfAbsent API support
+   * @param path path to a file
+   * @param length length of a file
+   */
+  private void metaSave(Path path, long length) {
+    if (metaCacheable) {
+      // TODO: remove this comment after debug
+      // byte[] key = path.toString().getBytes();
+      if (!metaExists(path)) {
+        boolean result = metaPut(path, length);
+        if (!result) {
+          LOG.error("Failed to save meat for {}", path);
+        }
+      }
+    }
+  }
+  /*********************************
+   * 
+   * Meta data cache access end
+   *********************************/
+  
+  /*********************************
+   * 
+   * Data cache access start - dataCache is used in SCFS 
+   * only to delete file data pages
+   * TODO: in the future this call must be delegated
+   * to DataCache provider, which must optimize
+   * the call and distribute it to all affected
+   * caching servers
+   *********************************/
+  private boolean dataDeleteFile(Path path, long size) 
+  {
+    LOG.debug("Evict data pages for {} length={}", path, size);
+
+    byte[] baseKey = getBaseKey(path);
+    long off = 0;
+    while (off < size) {
+      byte[] key = getKey(baseKey, off);
+      try {
+        boolean res = dataCache.delete(key);
+        LOG.debug("Delete {} result={}", off,  res);
+      } catch (IOException e) {
+        LOG.error("Evictor failed", e);
+        return false;
+      }
+      off += dataPageSize;
+    }
+    return true;
+  }
+  
+  /*********************************
+   * 
+   * Data cache access end
+   *********************************/
+  
   @Override
   public void bytesWritten(SidecarCachingOutputStream stream, long bytes) {
     if (isWriteCacheEnabled()) {
@@ -534,29 +738,40 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public void closingRemote(SidecarCachingOutputStream stream) {
     long length = stream.length();
     final Path path = stream.getRemotePath();
-    // Add path - length to the FIFO cache
+
     if (writeCacheEnabled) {
+      // It is save to update meta first in the cache
+      // because write cache has already file ready to read
+      metaSave(path, length);
+      // ASYNC
       Path cachePath = remoteToCachingPath(path);
-      /*DEBUG*/ LOG.debug("FIFO PUT {} {}",cachePath.toString(), length);
       writeCacheFileList.put(cachePath.toString(), length);
-    }
-    
-    Runnable r = () -> {
+      Runnable r = () -> {
+        try {
+          FSDataOutputStream os = stream.getRemoteStream();
+          os.close();
+          if (writeCacheEnabled) {
+            deleteMoniker(remoteToCachingPath(path));
+          }
+        } catch (IOException e) {
+          // TODO - how to handle exception?
+          LOG.error("Closing remote stream", e);
+        }
+      };
+      unboundedThreadPool.submit(r);
+    } else {
+      //SYNC
       try {
         FSDataOutputStream os = stream.getRemoteStream();
+        // This is where all actual data transmission start
         os.close();
-        if (writeCacheEnabled) {
-          deleteMoniker(remoteToCachingPath(path));
-        }
-        if (metaCacheable) {
-          metaCache.put(path.toString().getBytes(), com.carrot.sidecar.util.Utils.toBytes(length), 0);
-        }
+        // now update meat
+        metaSave(path, length);
       } catch (IOException e) {
-        //TODO - how to handle exception?
+        // TODO - how to handle exception?
         LOG.error("Closing remote stream", e);
       }
-    };
-    unboundedThreadPool.submit(r);
+    }
   }
 
   @Override
@@ -585,29 +800,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Data cache eviction of pages procedure
    */
   
-  private void evictDataPages(Path path) {
-    Long size = null;
-    LOG.debug("Evict data pages for {}", path);
-
-    try {
-      size = getFileLength(path);
-    } catch (IOException e) {
-      LOG.error("Evictor failed for path {}", path);
+  private void evictDataPages(Path path, long len) {
+    if (len < 0) {
+      LOG.debug("evictDataPages: file {} path is not in the meta cache", path);
       return;
     }
-    byte[] baseKey = getBaseKey(path);
-    long off = 0;
-    while (off < size) {
-      byte[] key = getKey(baseKey, off);
-      try {
-        boolean res = dataCache.delete(key);
-        LOG.debug("Delete {} result={}", off,  res);
-      } catch (IOException e) {
-        LOG.error("Evictor failed", e);
-        return;
-      }
-      off += dataPageSize;
-    }
+    dataDeleteFile(path, len);
   }
   
   private byte[] getBaseKey(Path path)  {
@@ -623,49 +821,28 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return baseKey;
   }
   
-  private Long getFileLengthFromCache(Path p) throws IOException {
-    byte[] buf = new byte[512];
-    byte[] key = p.toString().getBytes();
-    int size = (int) metaCache.get(key, 0, key.length, true, buf, 0);
-    if (size < 0) {
-      return null;
-    } else if (size > buf.length) {
-      buf = new byte[size];
-      size = (int) metaCache.get(key, 0, key.length, true, buf, 0);
-    }
-    return Long.parseLong(new String(buf, 0, size));
-  }
-  
-  private Long getFileLength(Path p) throws IOException {
-    if (metaCacheable) {
-      Long len = (Long) getFileLengthFromCache(p);
-      if (len != null) {
-        return len;
-      }
+  private long getFileLength(Path p) throws IOException {
+    long len = metaGet(p);
+    if (len > 0) {
+      return len;
     }
     // This can throw FileNotFound exception
     FileStatus fs = remoteFS.getFileStatus(p);
-    long len = fs.getLen();
-    if (metaCacheable) {
-      metaCache.put(p.toString().getBytes(), 
-        com.carrot.sidecar.util.Utils.toBytes(len), 0);
-    }
+    len = fs.getLen();
+    metaSave(p, len);
     return len;
   }
   
   private boolean isFile(Path p) throws IOException {
     boolean result;
-    if (metaCacheable) {
-      result = metaCache.exists(p.toString().getBytes());
-      if (result) {
-        return true;
-      }
+    if (metaExists(p)) {
+      // we keep only files in meta
+      return true;
     }
     FileStatus fs = remoteFS.getFileStatus(p);
     result = fs.isFile();
     if (result && metaCacheable) {
-      metaCache.put(p.toString().getBytes(), 
-        com.carrot.sidecar.util.Utils.toBytes(fs.getLen()), 0);
+      metaSave(p, fs.getLen());
     }
     return result;
   }
@@ -755,7 +932,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return metaCache;
   }
   
-  public static LRUCache<String,Long> getFIFOCache() {
+  public static LRUCache<String,Long> getLRUCache() {
     return writeCacheFileList;
   }
   
@@ -766,7 +943,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public void shutdown() throws IOException {
     saveDataCache();
     saveMetaCache();
-    saveFIFOCache();
+    saveLRUCache();
     dispose();
     clearFSCache();
   }
@@ -790,7 +967,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Open {}", path);
         
     Callable<FSDataInputStream> remoteCall = () -> {
-      return remoteFS.open(path, bufferSize);
+      return ((CachingFileSystem)remoteFS).openRemote(path, bufferSize);
     };
     Path writeCachePath = remoteToCachingPath(path);
     Callable<FSDataInputStream> cacheCall = () -> {
@@ -824,7 +1001,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
     LOG.debug("Create file: {}", f);
     FSDataOutputStream remoteOut = 
-        this.remoteFS.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
+        ((CachingFileSystem)remoteFS).createRemote(f, permission, overwrite, bufferSize, replication, blockSize, progress);
     if (!this.writeCacheEnabled) {
       return remoteOut;
     }
@@ -846,7 +1023,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public boolean mkdirs(Path path, FsPermission permission)
       throws IOException, FileAlreadyExistsException {
     LOG.debug("Create dir: {}", path);
-    boolean result = this.remoteFS.mkdirs(path, permission);
+    boolean result = ((CachingFileSystem)remoteFS).mkdirsRemote(path, permission);
     if (result && this.writeCacheFS != null) {
       this.writeCacheFS.mkdirs(path); // we use default permission
     }
@@ -875,7 +1052,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     
     LOG.debug("Create non-recursive {}", path);
     FSDataOutputStream remoteOut = 
-        this.remoteFS.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize, progress);
+        ((CachingFileSystem)remoteFS).createNonRecursiveRemote(path, permission, flags, bufferSize, 
+          replication, blockSize, progress);
 
     if (!this.writeCacheEnabled) {
       return remoteOut;
@@ -900,7 +1078,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       throws IOException {
     // Object storage FS do not support this operation, at least S3
     LOG.debug("Append {}", f);
-    FSDataOutputStream remoteOut = this.remoteFS.append(f, bufferSize, progress);
+    FSDataOutputStream remoteOut = ((CachingFileSystem)remoteFS).appendRemote(f, bufferSize, progress);
 
     // Usually append is not supported by cloud object stores
     if (!this.writeCacheEnabled) {
@@ -919,47 +1097,38 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   public boolean rename(Path src, Path dst) throws IOException {
-    LOG.debug("Rename {} to {}", src, dst);
+    LOG.info("Rename {}\n to {}", src, dst);
     // Check if src is file
     boolean isFile = isFile(src);
-    boolean result = this.remoteFS.rename(src, dst);
+    boolean result = ((CachingFileSystem) remoteFS).renameRemote(src, dst);
     if (result && isFile) {
+      long len = metaGet(src);
+      if (len > 0) {
+        metaDelete(src);
+        metaPut(dst, len);
+      }
       // Clear data pages cache
       Runnable r = () -> {
-        evictDataPages(src);
+        evictDataPages(src, len);
         // Update meta cache
-        try {
-          // TODO: is it correct?
-          if (metaCacheable) {
-            String key = src.toString();
-            Long len = (Long) getFileLengthFromCache(src);
-            if (len != null) {
-              metaCache.delete(key.getBytes());
-              metaCache.put(dst.toString().getBytes(), 
-                com.carrot.sidecar.util.Utils.toBytes(len), 0);
-            }
-          }
-        } catch (IOException e) {
-          LOG.error("rename", e);
-        }
       };
       unboundedThreadPool.submit(r);
-    }
-    if (!this.writeCacheEnabled) {
-      return result;
-    }
-
-    Path cacheSrc = null, cacheDst = null;
-    try {
-      cacheSrc = remoteToCachingPath(src);
-      cacheDst = remoteToCachingPath(dst);
-      if (this.writeCacheFS.exists(cacheSrc)) {
-        this.writeCacheFS.rename(cacheSrc, cacheDst);
-        // Remove from write-cache file list
-        writeCacheFileList.remove(cacheSrc.toString());
+      if (!this.writeCacheEnabled) {
+        return result;
       }
-    } catch (IOException e) {
-      LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);
+
+      Path cacheSrc = null, cacheDst = null;
+      try {
+        cacheSrc = remoteToCachingPath(src);
+        cacheDst = remoteToCachingPath(dst);
+        if (this.writeCacheFS.exists(cacheSrc)) {
+          this.writeCacheFS.rename(cacheSrc, cacheDst);
+          // Remove from write-cache file list
+          writeCacheFileList.remove(cacheSrc.toString());
+        }
+      } catch (IOException e) {
+        LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);
+      }
     }
     return result;
   }
@@ -967,24 +1136,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public boolean delete(Path f, boolean recursive) throws IOException {
 
     LOG.debug("Delete {} recursive={}", f, recursive);
-
-    boolean isFile = metaCache.exists(f.toString().getBytes());
-    boolean result = this.remoteFS.delete(f, recursive);
+    boolean isFile = metaExists(f);
+    boolean result = ((CachingFileSystem)remoteFS).deleteRemote(f, recursive);
    
     // Check if f is file
     if (isFile && result) {
       // Clear data pages cache
+      final long len = metaGet(f);
       Runnable r = () -> {
-        evictDataPages(f);
-        // Delete from meta
-        try {
-          if (metaCacheable) {
-            metaCache.delete(f.toString().getBytes());
-          }
-        } catch (IOException e) {
-          //TODO: this thing is serious
-          LOG.error("Failed to delete key from meta-cache", e);
-        }
+        evictDataPages(f, len);
+        metaDelete(f);
       };
       unboundedThreadPool.submit(r);
     } 
@@ -1003,7 +1164,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   public void close() throws IOException {
-    this.remoteFS.close();
+    //TODO: what to do on close?
     if (this.writeCacheFS != null) {
       this.writeCacheFS.close();
     }

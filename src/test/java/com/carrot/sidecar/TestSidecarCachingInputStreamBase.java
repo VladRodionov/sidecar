@@ -13,7 +13,6 @@
  */
 package com.carrot.sidecar;
 
-import static com.google.common.base.Preconditions.checkState;
 import static java.nio.file.Files.createTempDirectory;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -42,6 +41,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.carrot.cache.Builder;
 import com.carrot.cache.Cache;
 import com.carrot.cache.controllers.AQBasedAdmissionController;
 import com.carrot.cache.controllers.MinAliveRecyclingSelector;
@@ -49,6 +49,7 @@ import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Epoch;
 import com.carrot.cache.util.Utils;
+import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 
@@ -56,48 +57,74 @@ import com.carrot.sidecar.util.SidecarConfig;
  * TODO: test with write cache populated
  */
 
-public class TestSidecarCachingInputStream {
+public class TestSidecarCachingInputStreamBase {
   
-  protected static boolean fillFile = false;
+  private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStreamBase.class);
   
   protected static File sourceFile;
   
   protected static boolean skipTest = false;
   
-  protected static long fileSize = 100L * 1024 * 1024 * 1024;
+  protected String domainName;
+  
+  protected URI cacheDirectory;
+  
+  protected Cache cache;
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStream.class);
+  /**
+   * Subclasses can override
+   */
 
-  private URI cacheDirectory;
+  protected long fileSize = 10L * 1024 * 1024 * 1024;
     
-  private long cacheSize = 20L * 1024 * 1024 * 1024;
+  protected long fileCacheSize = 5L * 1024 * 1024 * 1024;
   
-  private int cacheSegmentSize = 64 * 1024 * 1024;
+  protected int fileCacheSegmentSize = 64 * 1024 * 1024;
   
-  private double zipfAlpha = 0.9;
+  protected long offheapCacheSize = 1L * 1024 * 1024 * 1024;
   
-  private Cache cache;
+  protected int offheapCacheSegmentSize = 4 * 1024 * 1024;
   
-  int pageSize = 1 << 12; // 1MB
+  protected double zipfAlpha = 0.9;
+    
+  protected int pageSize = 1 << 12; // 1MB
   // If access is random buffer size must be small
   // reads must be aligned to a page size
-  int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
+  protected int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
+      
+  protected int scavThreads = 1;
   
-  String domainName;
+  protected CacheType cacheType = CacheType.OFFHEAP;
+    
+  protected boolean aqEnabledFile = true;
   
+  protected boolean aqEnabledOffheap = false;
+  
+  protected double aqStartRatio = 0.5;
+  
+  // Hybrid cache
+  protected boolean hybridCacheInverseMode = true;
+  
+  protected boolean victim_promoteOnHit = true;
+  
+  protected double victim_promoteThreshold = 0.99;
+  
+  protected Builder withAddedConfigurations(Builder b) {
+    b.withCacheHybridInverseMode(hybridCacheInverseMode)
+    .withCacheSpinWaitTimeOnHighPressure(20000)
+    .withSLRUInsertionPoint(6);
+    return b;
+  }
     
   @BeforeClass
   public static void setupClass() throws IOException {
     int javaVersion = Utils.getJavaVersion();
     if (javaVersion < 11) {
       skipTest = true;
-      LOG.warn("Skipping {} java version 11 and above is required", TestSidecarCachingInputStream.class.getName());
+      LOG.warn("Skipping {} java version 11 and above is required", TestSidecarCachingInputStreamBase.class.getName());
       return;
     }
     sourceFile = TestUtils.createTempFile();
-    if (fillFile) {
-      TestUtils.fillRandom(sourceFile, fileSize);
-    }
   }
   
   @AfterClass
@@ -116,6 +143,7 @@ public class TestSidecarCachingInputStream {
     if (skipTest) return;
     LOG.info("{} BeforeMethod", Thread.currentThread().getName());  
     this.cacheDirectory = createTempDirectory("carrot_cache").toUri();
+    LOG.info("Cache dir: {}", this.cacheDirectory);
     Epoch.reset();
   }
   
@@ -124,27 +152,47 @@ public class TestSidecarCachingInputStream {
     if (skipTest) return;
     unregisterJMXMetricsSink(cache);
     cache.dispose();
-    checkState(cacheDirectory != null);
+    com.carrot.sidecar.util.Utils.checkState(cacheDirectory != null, "Directory is null");
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
     LOG.info("Deleted {}", cacheDirectory);
   }
   
-  private Cache createCache(boolean acEnabled) throws IOException {
+  private Cache createCache() throws IOException {
+    switch(cacheType) {
+      case OFFHEAP: return createOffheapCache();
+      case FILE: return createFileCache();
+      case HYBRID: return createHybridCache();
+      default: return null;
+    }
+  }
+  
+  private Cache createFileCache() throws IOException {
     SidecarConfig cacheConfig = SidecarConfig.getInstance();
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
+      .setDataCacheType(CacheType.FILE)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     
-    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_NAME, cacheSize);
-    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_NAME, cacheSegmentSize);
-    carrotCacheConfig.setCacheEvictionPolicy(SidecarConfig.DATA_CACHE_NAME, SLRUEvictionPolicy.class.getName());
-    carrotCacheConfig.setRecyclingSelector(SidecarConfig.DATA_CACHE_NAME, MinAliveRecyclingSelector.class.getName());
-    if (acEnabled) {
-      carrotCacheConfig.setAdmissionController(SidecarConfig.DATA_CACHE_NAME, AQBasedAdmissionController.class.getName());
+    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_FILE_NAME, fileCacheSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_FILE_NAME, fileCacheSegmentSize);
+    carrotCacheConfig.setCacheEvictionPolicy(SidecarConfig.DATA_CACHE_FILE_NAME, SLRUEvictionPolicy.class.getName());
+    carrotCacheConfig.setRecyclingSelector(SidecarConfig.DATA_CACHE_FILE_NAME, MinAliveRecyclingSelector.class.getName());
+    carrotCacheConfig.setSLRUInsertionPoint(SidecarConfig.DATA_CACHE_FILE_NAME, 6);
+    if (aqEnabledFile) {
+      carrotCacheConfig.setAdmissionController(SidecarConfig.DATA_CACHE_FILE_NAME, AQBasedAdmissionController.class.getName());
+      carrotCacheConfig.setAdmissionQueueStartSizeRatio(SidecarConfig.DATA_CACHE_FILE_NAME, aqStartRatio);
     }
+    
+    if (scavThreads > 1) {
+      carrotCacheConfig.setScavengerNumberOfThreads(SidecarConfig.DATA_CACHE_FILE_NAME, scavThreads);      
+    }
+    
+    carrotCacheConfig.setVictimCachePromotionOnHit(SidecarConfig.DATA_CACHE_FILE_NAME, victim_promoteOnHit);
+    carrotCacheConfig.setVictimPromotionThreshold(SidecarConfig.DATA_CACHE_FILE_NAME, victim_promoteThreshold);
+    
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     cache = TestUtils.createDataCacheFromHdfsConfiguration(configuration);
     LOG.info("Recycling selector={}", cache.getEngine().getRecyclingSelector().getClass().getName());
@@ -155,6 +203,49 @@ public class TestSidecarCachingInputStream {
       this.cache.registerJMXMetricsSink(domainName);
     }
     return cache;
+  }
+  
+  private Cache createOffheapCache() throws IOException {
+    SidecarConfig cacheConfig = SidecarConfig.getInstance();
+    cacheConfig
+      .setDataPageSize(pageSize)
+      .setIOBufferSize(ioBufferSize)
+      .setDataCacheType(CacheType.OFFHEAP)
+      .setJMXMetricsEnabled(true);
+    
+    CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
+    
+    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, offheapCacheSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, offheapCacheSegmentSize);
+    carrotCacheConfig.setCacheEvictionPolicy(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, SLRUEvictionPolicy.class.getName());
+    carrotCacheConfig.setRecyclingSelector(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, MinAliveRecyclingSelector.class.getName());
+    carrotCacheConfig.setSLRUInsertionPoint(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, 6);
+    if (aqEnabledOffheap) {
+      carrotCacheConfig.setAdmissionController(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, AQBasedAdmissionController.class.getName());
+      carrotCacheConfig.setAdmissionQueueStartSizeRatio(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, aqStartRatio);
+    }
+    
+    if (scavThreads > 1) {
+      carrotCacheConfig.setScavengerNumberOfThreads(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, scavThreads);      
+    }
+    
+    Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
+    cache = TestUtils.createDataCacheFromHdfsConfiguration(configuration);
+    LOG.info("Recycling selector={}", cache.getEngine().getRecyclingSelector().getClass().getName());
+    
+    boolean metricsEnabled = cacheConfig.isJMXMetricsEnabled();
+    if (metricsEnabled) {
+      domainName = cacheConfig.getJMXMetricsDomainName();
+      this.cache.registerJMXMetricsSink(domainName);
+    }
+    return cache;
+  }
+  
+  private Cache createHybridCache() throws IOException{
+    Cache parent = createOffheapCache();
+    Cache victim = createFileCache();
+    parent.setVictimCache(victim);
+    return parent;
   }
   
   private void unregisterJMXMetricsSink(Cache cache) {
@@ -179,17 +270,19 @@ public class TestSidecarCachingInputStream {
   @Test
   public void testSidecarCachingInputStreamACDisabled () throws Exception {
     if (skipTest) return;
-
+    this.aqEnabledFile = false;
+    this.aqEnabledOffheap = false;
     LOG.info("Java version={}", Utils.getJavaVersion());
-    this.cache = createCache(false);
+    this.cache = createCache();
     runTestRandomAccess();
   }
   
   @Test
   public void testSidecarCachingInputStreamACEnabledSeq () throws Exception {
     if (skipTest) return;
-
-    this.cache = createCache(true);
+    this.aqEnabledFile = true;
+    this.aqEnabledOffheap = false;
+    this.cache = createCache();
     runTestRandomSequentialAccess();
   }
   
@@ -198,7 +291,10 @@ public class TestSidecarCachingInputStream {
     if (skipTest) return;
 
     LOG.info("Java version={}", Utils.getJavaVersion());
-    this.cache = createCache(true);
+    this.scavThreads = 2;
+    this.aqEnabledFile = true;
+    this.aqEnabledOffheap = false;
+    this.cache = createCache();
     Runnable r = () -> {
       try {
         runTestRandomAccess();
@@ -225,32 +321,36 @@ public class TestSidecarCachingInputStream {
   @Test
   public void testCarrotCachingInputStreamACDisabledSeq () throws Exception {
     if (skipTest) return;
-
-    this.cache = createCache(false);
+    this.aqEnabledFile = false;
+    this.aqEnabledOffheap = false;
+    this.cache = createCache();
     runTestRandomSequentialAccess();
   }
   
   @Test
   public void testCarrotCachingInputStreamNotPositionalReads() throws Exception {
     if (skipTest) return;
-
-    this.cache = createCache(false);
+    this.aqEnabledFile = false;
+    this.aqEnabledOffheap = false;
+    this.cache = createCache();
     runTestSequentialAccess();
   }
   
   @Test
   public void testCarrotCachingInputStreamHeapByteBuffer() throws Exception {
     if (skipTest) return;
-
-    this.cache = createCache(false);
+    this.aqEnabledFile = false;
+    this.aqEnabledOffheap = false;    
+    this.cache = createCache();
     runTestSequentialAccessByteBuffer(false);
   }
   
   @Test
   public void testCarrotCachingInputStreamDirectByteBuffer() throws Exception {
     if (skipTest) return;
-
-    this.cache = createCache(false);
+    this.aqEnabledFile = false;
+    this.aqEnabledOffheap = false;
+    this.cache = createCache();
     runTestSequentialAccessByteBuffer(true);
   }
   
@@ -280,7 +380,7 @@ public class TestSidecarCachingInputStream {
       int numRecords = (int) (fileSize / pageSize);
       ZipfDistribution dist = new ZipfDistribution(numRecords, this.zipfAlpha);
 
-      int numIterations = numRecords;
+      int numIterations = (int) Math.min(1000000, 10L * numRecords);
 
       Random r = new Random();
       byte[] buffer = new byte[pageSize];
@@ -315,9 +415,10 @@ public class TestSidecarCachingInputStream {
         }
         assertTrue(result);
         if (i > 0 && i % 100000 == 0) {
-          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={}", 
+          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={} hitRate={}", 
             Thread.currentThread().getName(), i, offset, requestSize,
-            (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000);
+            (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000,
+            carrotStream.getHitRate());
         }
       }
       long endTime = System.currentTimeMillis();
@@ -337,7 +438,7 @@ public class TestSidecarCachingInputStream {
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
       
-      int numRecords = (int) (fileSize / pageSize);
+      int numRecords = Math.min(1000000, (int) (fileSize / pageSize));
       ZipfDistribution dist = new ZipfDistribution(numRecords, this.zipfAlpha);
 
       int numIterations = numRecords;
@@ -348,7 +449,8 @@ public class TestSidecarCachingInputStream {
       long startTime = System.currentTimeMillis();
       long totalRead = 0;
       for (int i = 0; i < numIterations; i++) {
-        int accessSize = 8 * 1024;
+        int accessSize = Math.min(pageSize, 8 * 1024);
+        
         long n = dist.sample();
         long offset = (n - 1) * pageSize;
         int requestOffset = r.nextInt(pageSize);
@@ -406,7 +508,7 @@ public class TestSidecarCachingInputStream {
         assertEquals(readCache, requestSize);
         assertTrue(Utils.compareTo(buffer, 0, requestSize, controlBuffer, 0, requestSize) == 0);
         assertEquals(extStream.getPos(), cacheStream.getPos());
-        if ( i > 0 && i % 100000 == 0) {
+        if ( i > 0 && i % 1000 == 0) {
           LOG.info("read {}", i);
         }
       }
