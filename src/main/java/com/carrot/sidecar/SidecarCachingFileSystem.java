@@ -17,6 +17,12 @@
  */
 package com.carrot.sidecar;
 
+import static com.carrot.sidecar.util.SidecarConfig.DATA_CACHE_FILE_NAME;
+import static com.carrot.sidecar.util.SidecarConfig.META_CACHE_NAME;
+import static com.carrot.sidecar.util.Utils.hashCrypto;
+import static com.carrot.sidecar.util.Utils.join;
+import static com.carrot.sidecar.util.Utils.toBytes;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -56,21 +62,16 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Builder;
 import com.carrot.cache.Cache;
 import com.carrot.cache.controllers.LRCRecyclingSelector;
-import com.carrot.cache.index.CompactBaseIndexFormat;
-import com.carrot.cache.io.BaseDataWriter;
-import com.carrot.cache.io.BaseFileDataReader;
-import com.carrot.cache.io.BaseMemoryDataReader;
+import com.carrot.cache.index.CompactBlockIndexFormat;
+import com.carrot.cache.io.BlockDataWriter;
+import com.carrot.cache.io.BlockFileDataReader;
+import com.carrot.cache.io.BlockMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.LRUCache;
 import com.carrot.sidecar.util.SidecarConfig;
-import static com.carrot.sidecar.util.SidecarConfig.DATA_CACHE_FILE_NAME;
-import static com.carrot.sidecar.util.SidecarConfig.META_CACHE_NAME;
-import static com.carrot.sidecar.util.Utils.hashCrypto;
-import static com.carrot.sidecar.util.Utils.toBytes;
-import static com.carrot.sidecar.util.Utils.join;
 
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
@@ -424,10 +425,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
             .withCacheMaximumSize(maxSize)
             .withCacheDataSegmentSize(dataSegmentSize)
             .withRecyclingSelector(LRCRecyclingSelector.class.getName())
-            .withDataWriter(BaseDataWriter.class.getName())
-            .withMemoryDataReader(BaseMemoryDataReader.class.getName())
-            .withFileDataReader(BaseFileDataReader.class.getName())
-            .withMainQueueIndexFormat(CompactBaseIndexFormat.class.getName());       
+            .withDataWriter(BlockDataWriter.class.getName())
+            .withMemoryDataReader(BlockMemoryDataReader.class.getName())
+            .withFileDataReader(BlockFileDataReader.class.getName())
+            .withMainQueueIndexFormat(CompactBlockIndexFormat.class.getName());       
         metaCache = builder.buildMemoryCache();
         LOG.info("Created new cache[{}]", metaCache.getName());
       } else {
