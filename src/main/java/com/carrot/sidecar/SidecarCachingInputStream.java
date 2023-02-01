@@ -734,7 +734,9 @@ public class SidecarCachingInputStream extends InputStream
       }
       return is.read(position, buffer, bufOffset, len);
     } catch(IOException e) {
-      //TODO: better exception handling
+      //TODO: better exception handling?
+      // Basically we close write cache input stream for this file
+      // Looks OK to me
       LOG.error("Cached input stream readFromWriteCache", e);
       this.cacheStreamCallable = null;
       this.cacheStream = null;

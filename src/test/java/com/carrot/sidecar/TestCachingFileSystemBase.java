@@ -40,6 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
+import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.SidecarConfig;
@@ -75,6 +76,10 @@ public abstract class TestCachingFileSystemBase {
   protected long offheapCacheSize = 1L * 1024 * 1024 * 1024;
   
   protected int offheapCacheSegmentSize = 4 * 1024 * 1024;
+  
+  protected long metaCacheSize = 1L << 30;
+  
+  protected int metaCacheSementSize = 4 * (1 << 20);
   
   protected double zipfAlpha = 0.9;
   
@@ -148,9 +153,17 @@ public abstract class TestCachingFileSystemBase {
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheMaxSize));
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_URI_KEY, writeCacheDirectory.toString());
     conf.set(SidecarConfig.SIDECAR_TEST_MODE_KEY, Boolean.TRUE.toString());
+    // Set global cache directory
+    conf.set(CarrotConfig.CACHE_ROOT_DIR_PATH_KEY, cacheDirectory.getPath());
+    CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
+    // Set meta cache 
+    carrotCacheConfig.setCacheMaximumSize(SidecarConfig.META_CACHE_NAME, metaCacheSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSementSize);
     
     FileSystem fs = FileSystem.get(extDirectory, conf);
-    
+    // Set meta caching enabled
+    SidecarCachingFileSystem cfs = ((SidecarTestFileSystem) fs).getCachingFileSystem();
+    cfs.setMetaCacheEnabled(true);
     return fs;
   }
   

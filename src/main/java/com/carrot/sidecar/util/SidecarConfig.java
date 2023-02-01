@@ -155,7 +155,7 @@ public class SidecarConfig extends Properties {
    * Is test mode
    * @return true or false
    */
-  public boolean isTestEnabled() {
+  public boolean isTestMode() {
     String value = getProperty(SIDECAR_TEST_MODE_KEY);
     if (value != null) {
       return Boolean.valueOf(value);

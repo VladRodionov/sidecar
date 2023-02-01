@@ -283,7 +283,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         }
       }
       
-      SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
+      final SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
       dataCacheType = sconfig.getDataCacheType();
       // Add two caches (sidecar-data, sidecar-meta) types to the configuration
       setDataCacheType(config, dataCacheType);      
@@ -298,7 +298,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
         URI writeCacheURI = sconfig.getWriteCacheURI();
         if (writeCacheURI != null) {
-          if (sconfig.isTestEnabled()) {
+          if (sconfig.isTestMode()) {
             //TODO: we should not have this test mode at all
             this.writeCacheFS = new LocalFileSystem();
             this.writeCacheFS.initialize(writeCacheURI, configuration);
@@ -325,20 +325,24 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         loadDataCache();
         loadMetaCache();
         loadWriteCacheFileListCache();
-        
-        if (!sconfig.isTestEnabled() && sconfig.isCachePersistent()) {
+
+        if (!sconfig.isTestMode()) {
+          // Install shutdown hook if not in a test mode
           Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-              saveDataCache();
-              saveMetaCache();
-              saveLRUCache();
+              if (sconfig.isCachePersistent()) {
+                saveDataCache();
+                saveMetaCache();
+                LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
+                LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
+              }
+              // we save write cache file list even if persistence == false
+              saveWriteCacheFileListCache();
+              LOG.info("Shutdown hook installed for cache[lru-cache]");
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
             }
           }));
-          LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
-          LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
-          LOG.info("Shutdown hook installed for cache[lru-cache]");
         }
       }
       this.inited = true;
@@ -358,6 +362,18 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   }
 
+  /**
+   * For testing only (not visible outside the package)
+   */
+  
+  boolean deleteFromWriteCache(Path remotePath) throws IOException
+  {
+    if (this.writeCacheFS == null) {
+      throw new IOException("Write caching FS is not available");
+    }
+    Path cachedPath = remoteToCachingPath(remotePath);
+    return this.writeCacheFS.delete(cachedPath, false);
+  }
   /**
    * Get write cache FS
    * @return write cache file system
@@ -387,7 +403,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       writeCacheSize.set(dis.readLong());
       writeCacheFileList.load(dis);
       dis.close();
-    } 
+      LOG.info("Loaded cache[{}]", LRUCache.NAME);
+    } else {
+      LOG.info("Created new cache[{}]", LRUCache.NAME);
+    }
   }
 
   private void loadMetaCache() throws IOException{
@@ -398,7 +417,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       long maxSize = config.getCacheMaximumSize(META_CACHE_NAME);
       int dataSegmentSize = (int) config.getCacheSegmentSize(META_CACHE_NAME);
       metaCache = Cache.loadCache(rootDir, META_CACHE_NAME);
-      LOG.info("Loaded cache={} from={} name={}", metaCache, rootDir, META_CACHE_NAME);
       if (metaCache == null) {
         Builder builder = new Builder(META_CACHE_NAME);
         builder = builder
@@ -411,12 +429,14 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
             .withFileDataReader(BaseFileDataReader.class.getName())
             .withMainQueueIndexFormat(CompactBaseIndexFormat.class.getName());       
         metaCache = builder.buildMemoryCache();
-      }
+        LOG.info("Created new cache[{}]", metaCache.getName());
+      } else {
+        LOG.info("Loaded cache[{}] from the path: {}", metaCache.getName(),
+          config.getCacheRootDir(metaCache.getName()));      }
     } catch (IOException e) {
       LOG.error("loadMetaCache error", e);
       throw e;
-    }  
-        
+    }     
     if (sconfig.isJMXMetricsEnabled()) {
       LOG.info("SidecarCachingFileSystem JMX enabled for meta-data cache");
       String domainName = config.getJMXMetricsDomainName();
@@ -426,25 +446,26 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   private Cache loadDataCache(CacheType type) throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
+    boolean isPersistent = SidecarConfig.getInstance().isCachePersistent();
     Cache dataCache = null;
-    try {
-      dataCache = Cache.loadCache(type.getCacheName());
-      if (dataCache != null) {
-        LOG.info("Loaded cache[{}] from the path: {}", dataCache.getName(),
-          config.getCacheRootDir(dataCache.getName()));
-        return dataCache;
+    if (isPersistent) {
+      try {
+        dataCache = Cache.loadCache(type.getCacheName());
+        if (dataCache != null) {
+          LOG.info("Loaded cache[{}] from the path: {}", dataCache.getName(),
+            config.getCacheRootDir(dataCache.getName()));
+          return dataCache;
+        }
+      } catch (IOException e) {
+        LOG.error(e.getMessage());
       }
-    } catch (IOException e) {
-      LOG.error(e.getMessage());
     }
 
     if (dataCache == null) {
       // Create new instance
-      LOG.info("Creating new cache");
       dataCache = new Cache(type.getCacheName(), config);
       LOG.info("Created new cache[{}]", dataCache.getName());
     }
-    LOG.info("Initialized cache[{}]", dataCache.getName());
     SidecarConfig sconfig = SidecarConfig.getInstance();
     boolean metricsEnabled = sconfig.isJMXMetricsEnabled();
 
@@ -468,7 +489,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
-  void saveLRUCache() throws IOException {
+  void saveWriteCacheFileListCache() throws IOException {
     if (writeCacheFileList != null) {
       long start = System.currentTimeMillis();
       LOG.info("Shutting down cache[{}]", LRUCache.NAME);
@@ -932,7 +953,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return metaCache;
   }
   
-  public static LRUCache<String,Long> getLRUCache() {
+  public static LRUCache<String,Long> getWriteCacheFileListCache() {
     return writeCacheFileList;
   }
   
@@ -941,9 +962,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   public void shutdown() throws IOException {
-    saveDataCache();
-    saveMetaCache();
-    saveLRUCache();
+    boolean isPersistent = SidecarConfig.getInstance().isCachePersistent();
+    if (isPersistent) {
+      saveDataCache();
+      saveMetaCache();
+    }
+    saveWriteCacheFileListCache();
     dispose();
     clearFSCache();
   }

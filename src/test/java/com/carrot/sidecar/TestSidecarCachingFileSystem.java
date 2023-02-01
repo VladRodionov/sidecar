@@ -300,7 +300,7 @@ public class TestSidecarCachingFileSystem {
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getLRUCache();
+    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
     
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
@@ -318,7 +318,7 @@ public class TestSidecarCachingFileSystem {
     
     cache = SidecarCachingFileSystem.getDataCache();
     metaCache = SidecarCachingFileSystem.getMetaCache();
-    fifoCache = SidecarCachingFileSystem.getLRUCache();
+    fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
     assertTrue(metaCache.size() == 1);
     assertTrue(cache.size() == 1);
     assertTrue(fifoCache.size() == 1);
