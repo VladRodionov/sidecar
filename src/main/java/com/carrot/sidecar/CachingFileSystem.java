@@ -41,6 +41,10 @@ public interface CachingFileSystem {
       EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
       Progressable progress) throws IOException; 
 
+  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException;
+  
   public FSDataOutputStream appendRemote(Path f, int bufferSize, Progressable progress)
       throws IOException; 
 

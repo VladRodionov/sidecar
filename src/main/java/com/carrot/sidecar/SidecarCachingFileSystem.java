@@ -1120,6 +1120,33 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   @SuppressWarnings("deprecation")
+  public FSDataOutputStream createNonRecursive(Path path, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    
+    LOG.debug("Create non-recursive {}", path);
+    FSDataOutputStream remoteOut = 
+        ((CachingFileSystem)remoteFS).createNonRecursiveRemote(path, permission, overwrite, bufferSize, 
+          replication, blockSize, progress);
+
+    if (!this.writeCacheEnabled) {
+      return remoteOut;
+    }
+    
+    Path cachePath = remoteToCachingPath(path);
+    FSDataOutputStream cacheOut = null;
+    try {
+        this.writeCacheFS.create(cachePath, true, bufferSize, replication, blockSize);
+    } catch(IOException e) {
+      LOG.error("Write cache create file failed", e);
+      return remoteOut;
+    }
+    
+    // Create file moniker
+    createMoniker(cachePath);
+    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
+  }
+  @SuppressWarnings("deprecation")
   public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
       throws IOException {
     // Object storage FS do not support this operation, at least S3

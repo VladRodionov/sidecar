@@ -1,7 +1,11 @@
-/*
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -11,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.abfs;
+package com.carrot.sidecar.wasb;
 
 import java.io.IOException;
 import java.net.URI;
@@ -23,7 +27,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem;
+import org.apache.hadoop.fs.azure.NativeAzureFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
@@ -32,16 +36,15 @@ import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
- * Sidecar caching file system for ABFS
- * fs.abfs.impl=com.carrot.sidecar.abfs.SidecarAzureBlobFileSystem
+ * Sidecar caching file system for WASB native Azure FS
+ * fs.wasb.impl=com.carrot.sidecar.abfs.SidecarNativeAzureBlobFileSystem
  */
-
-public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem 
+public class SidecarNativeAzureBlobFileSystem extends NativeAzureFileSystem 
   implements MetaDataCacheable, CachingFileSystem {
 
   private SidecarCachingFileSystem sidecar;
-  
-  public SidecarAzureBlobFileSystem() {}
+
+  public SidecarNativeAzureBlobFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
@@ -59,6 +62,12 @@ public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem
   public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
       int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
     return sidecar.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
+  }
+  @Override
+  public FSDataOutputStream createNonRecursive(Path f, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    return sidecar.createNonRecursive(f, permission, overwrite, bufferSize, replication, blockSize, progress);
   }
   
   @Override
@@ -89,6 +98,9 @@ public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem
     sidecar.close();
   }
 
+  /**
+   * CachingFileSystem
+   */
   @Override
   public SidecarCachingFileSystem getCachingFileSystem() {
     return sidecar;
@@ -133,10 +145,12 @@ public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem
       throws IOException, FileAlreadyExistsException {
     return super.mkdirs(path, permission);
   }
+
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
   }
+
 }

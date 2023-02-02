@@ -139,4 +139,11 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
       throws IOException, FileAlreadyExistsException {
     return super.mkdirs(path, permission);
   }
+  
+  @Override
+  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
+      throws IOException {
+    return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
+  }
 }

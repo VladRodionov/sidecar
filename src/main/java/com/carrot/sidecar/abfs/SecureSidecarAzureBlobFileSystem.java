@@ -15,6 +15,10 @@ package com.carrot.sidecar.abfs;
 
 import org.apache.hadoop.fs.azurebfs.constants.FileSystemUriSchemes;
 
+/**
+ * Sidecar caching file system for secure ABFS
+ * fs.abfss.impl=com.carrot.sidecar.abfs.SecureSidecarAzureBlobFileSystem
+ */
 public class SecureSidecarAzureBlobFileSystem extends SidecarAzureBlobFileSystem {
 
   @Override
