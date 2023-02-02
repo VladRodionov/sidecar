@@ -65,7 +65,7 @@ public class SidecarConfig extends Properties {
    * This thread pool is used to sync write cache and remote FS as well as 
    * to clean cache upon file deletion or rename
    */
-  public final static String SIDECAR_THREAD_POOL_MIN_CORE_KEY = "sidecar.thread.pool.core.size";
+  public final static String SIDECAR_THREAD_POOL_MAX_CORE_KEY = "sidecar.thread.pool.max.size";
   
   /**
    * Comma-separated list of regular expressions of directory names in
@@ -101,7 +101,7 @@ public class SidecarConfig extends Properties {
   
   public final static boolean DEFAULT_SIDECAR_PERSISTENT_CACHE = true;
   
-  public final static int DEFAULT_SIDECAR_THREAD_POOL_CORE_SIZE = 8;
+  public final static int DEFAULT_SIDECAR_THREAD_POOL_MAX_SIZE = 8;
   
   
   private static SidecarConfig instance;
@@ -429,24 +429,24 @@ public class SidecarConfig extends Properties {
   }
   
   /**
-   * Gets thread pool core size
+   * Gets thread pool max size
    * @return maximum size
    */
-  public int getSidecarThreadPoolCoreSize() {
-    String value = getProperty(SIDECAR_THREAD_POOL_MIN_CORE_KEY);
+  public int getSidecarThreadPoolMaxSize() {
+    String value = getProperty(SIDECAR_THREAD_POOL_MAX_CORE_KEY);
     if (value != null) {
       return Integer.parseInt(value);
     }
-    return DEFAULT_SIDECAR_THREAD_POOL_CORE_SIZE;
+    return DEFAULT_SIDECAR_THREAD_POOL_MAX_SIZE;
   }
   
   /**
-   * Sets Sidecar thread pool core (minimum alive) size
+   * Sets Sidecar thread pool max size
    * @param size
    * @return
    */
-  public SidecarConfig setSidecarThreadPoolCoreSize(int size) {
-    setProperty(SIDECAR_THREAD_POOL_MIN_CORE_KEY, Integer.toString(size));
+  public SidecarConfig setSidecarThreadPoolMaxSize(int size) {
+    setProperty(SIDECAR_THREAD_POOL_MAX_CORE_KEY, Integer.toString(size));
     return this;
   }
   

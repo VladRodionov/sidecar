@@ -348,11 +348,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       }
       this.inited = true;
       //TODO: make it configurable
-      int coreThreads = sconfig.getSidecarThreadPoolCoreSize();
+      int coreThreads = sconfig.getSidecarThreadPoolMaxSize();
       int keepAliveTime = 60; // hard-coded
       //TODO: should it be bounded or unbounded?
+      // This is actually unbounded queue (LinkedBlockingQueue w/o parameters)
+      // and bounded thread pool - only coreThreads maximum
       unboundedThreadPool = new ThreadPoolExecutor(
-        coreThreads, Integer.MAX_VALUE, // UNBOUNDED can result in a serious service issues
+        coreThreads, Integer.MAX_VALUE, 
         keepAliveTime, TimeUnit.SECONDS,
         new LinkedBlockingQueue<Runnable>(),
         BlockingThreadPoolExecutorService.newDaemonThreadFactory(
