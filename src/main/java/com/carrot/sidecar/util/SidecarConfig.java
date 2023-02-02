@@ -62,6 +62,12 @@ public class SidecarConfig extends Properties {
   public final static String SIDECAR_PERSISTENT_CACHE_KEY = "sidecar.cache.persistent";
   
   /**
+   * This thread pool is used to sync write cache and remote FS as well as 
+   * to clean cache upon file deletion or rename
+   */
+  public final static String SIDECAR_THREAD_POOL_MIN_CORE_KEY = "sidecar.thread.pool.core.size";
+  
+  /**
    * Comma-separated list of regular expressions of directory names in
    * remote file system, which must be excluded from caching 
    */
@@ -94,6 +100,8 @@ public class SidecarConfig extends Properties {
   public final static CacheType DEFAULT_DATA_CACHE_TYPE = CacheType.FILE;
   
   public final static boolean DEFAULT_SIDECAR_PERSISTENT_CACHE = true;
+  
+  public final static int DEFAULT_SIDECAR_THREAD_POOL_CORE_SIZE = 8;
   
   
   private static SidecarConfig instance;
@@ -419,4 +427,27 @@ public class SidecarConfig extends Properties {
     return DEFAULT_SIDECAR_PERSISTENT_CACHE;
  
   }
+  
+  /**
+   * Gets thread pool core size
+   * @return maximum size
+   */
+  public int getSidecarThreadPoolCoreSize() {
+    String value = getProperty(SIDECAR_THREAD_POOL_MIN_CORE_KEY);
+    if (value != null) {
+      return Integer.parseInt(value);
+    }
+    return DEFAULT_SIDECAR_THREAD_POOL_CORE_SIZE;
+  }
+  
+  /**
+   * Sets Sidecar thread pool core (minimum alive) size
+   * @param size
+   * @return
+   */
+  public SidecarConfig setSidecarThreadPoolCoreSize(int size) {
+    setProperty(SIDECAR_THREAD_POOL_MIN_CORE_KEY, Integer.toString(size));
+    return this;
+  }
+  
 }

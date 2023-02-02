@@ -347,19 +347,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         }
       }
       this.inited = true;
+      //TODO: make it configurable
+      int coreThreads = sconfig.getSidecarThreadPoolCoreSize();
+      int keepAliveTime = 60; // hard-coded
+      //TODO: should it be bounded or unbounded?
+      unboundedThreadPool = new ThreadPoolExecutor(
+        coreThreads, Integer.MAX_VALUE, // UNBOUNDED can result in a serious service issues
+        keepAliveTime, TimeUnit.SECONDS,
+        new LinkedBlockingQueue<Runnable>(),
+        BlockingThreadPoolExecutorService.newDaemonThreadFactory(
+            "sidecar-thread-pool"));
     } catch (Throwable e) {
       LOG.error(e.getMessage(), e);
       throw new IOException(e);
     }
-    //TODO: make it configurable
-    int maxThreads = 8;
-    int keepAliveTime = 60;
-    unboundedThreadPool = new ThreadPoolExecutor(
-      maxThreads, Integer.MAX_VALUE,
-      keepAliveTime, TimeUnit.SECONDS,
-      new LinkedBlockingQueue<Runnable>(),
-      BlockingThreadPoolExecutorService.newDaemonThreadFactory(
-          "sidecar-unbounded"));
+ 
 
   }
 
