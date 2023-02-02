@@ -1,21 +1,4 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-package com.carrot.sidecar.hdfs;
+package com.carrot.sidecar.adl;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,10 +9,10 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.adl.AdlFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.util.Progressable;
 
 import com.carrot.sidecar.CachingFileSystem;
@@ -37,20 +20,22 @@ import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
- * Sidecar caching File System for Hadoop HDFS
- * fs.hdfs.impl=com.carrot.sidecar.hdfs.SidecarDistributedFileSystem
+ * 
+ * Sidecar caching FS for Azure Data Lake File System Gen 1
+ * fs.adl.impl=com.carrot.sidecar.adl.SidecarAdlFileSystem
  */
-
-public class SidecarDistributedFileSystem extends DistributedFileSystem implements 
-  MetaDataCacheable, CachingFileSystem {
+public class SidecarAdlFileSystem extends AdlFileSystem 
+  implements MetaDataCacheable, CachingFileSystem{
+  
   private SidecarCachingFileSystem sidecar;
   
-  public SidecarDistributedFileSystem() {}
+  public SidecarAdlFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
+    //TODO: do we need to initialize if it was cached? 
     //Can we use single instance per process?
     this.sidecar.initialize(name, originalConf);
   }
@@ -58,6 +43,14 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   @Override
   public FSDataInputStream open(Path f, int bufferSize) throws IOException {
     return sidecar.open(f, bufferSize);
+  }
+  
+  /**
+   * ADL Gen 1 supports this API
+   */
+  @Override
+  public void concat(Path trg, Path[] srcs) throws IOException {
+    sidecar.concat(trg, srcs);
   }
 
   @Override
@@ -85,15 +78,16 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
     return sidecar.rename(src, dst);
   }
 
-  @Override
-  public void rename(Path src, Path dst, Rename... options) throws IOException {
+  @Override 
+  public void rename(Path src, Path dst, Rename ... options) throws IOException {
     sidecar.rename(src, dst, options);
   }
+  
   @Override
   public boolean delete(Path f, boolean recursive) throws IOException {
     return sidecar.delete(f, recursive);
   }
-
+  
   @Override
   public boolean mkdirs(Path path, FsPermission permission)
       throws IOException, FileAlreadyExistsException {
@@ -105,12 +99,23 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
     super.close();
     sidecar.close();
   }
+  
+  /**
+   * 
+   *  CachingFileSystem interface
+   * 
+   */
 
   @Override
   public SidecarCachingFileSystem getCachingFileSystem() {
     return sidecar;
   }
   
+  @Override
+  public void concatRemote(Path trg, Path[] pathes) throws IOException {
+    super.concat(trg, pathes);
+  }
+
   @Override
   public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException {
     return super.open(f, bufferSize);
@@ -123,6 +128,7 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
       bufferSize, replication, blockSize, progress) ;
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
@@ -140,7 +146,8 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   public boolean renameRemote(Path src, Path dst) throws IOException {
     return super.rename(src, dst);
   }
-  
+
+  @SuppressWarnings("deprecation")
   @Override
   public void renameRemote(Path src, Path dst, Rename... options) throws IOException {
     super.rename(src, dst, options);
@@ -156,11 +163,12 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
       throws IOException, FileAlreadyExistsException {
     return super.mkdirs(path, permission);
   }
-  
+
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
   }
+
 }

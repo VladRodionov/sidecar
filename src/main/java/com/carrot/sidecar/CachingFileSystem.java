@@ -24,35 +24,132 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
 public interface CachingFileSystem {
-  
-  public SidecarCachingFileSystem getCachingFileSystem();
-  
-  public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException;
-  
-  public FSDataOutputStream createRemote(Path f, FsPermission permission, boolean overwrite,
-      int bufferSize, short replication, long blockSize, Progressable progress) throws IOException; 
 
+  /**
+   * Get caching file system
+   * @return caching file system
+   */
+  public SidecarCachingFileSystem getCachingFileSystem();
+
+  
+  /**
+   * Concatenate remote files
+   * @param trg target file
+   * @param pathes files to concatenate
+   * @throws IOException
+   */
+  public default void concatRemote(Path trg, Path[] pathes) throws IOException{}
+  
+  /**
+   * Open remote path
+   * @param f path
+   * @param bufferSize buffer size
+   * @return input stream
+   * @throws IOException
+   */
+  public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException;
+
+  /**
+   * Create remote file
+   * @param f path
+   * @param permission file permission
+   * @param overwrite overwrite file
+   * @param bufferSize buffer size
+   * @param replication replication factor
+   * @param blockSize block size
+   * @param progress progress listener
+   * @return output stream
+   * @throws IOException
+   */
+  public FSDataOutputStream createRemote(Path f, FsPermission permission, boolean overwrite,
+      int bufferSize, short replication, long blockSize, Progressable progress) throws IOException;
+
+  /**
+   * Create remote file (non-recursive)
+   * @param f path
+   * @param permission file permission
+   * @param flags flags
+   * @param overwrite overwrite file
+   * @param bufferSize buffer size
+   * @param replication replication factor
+   * @param blockSize block size
+   * @param progress progress listener
+   * @return output stream
+   * @throws IOException
+   */
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
-      Progressable progress) throws IOException; 
-
-  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
-      boolean overwrite, int bufferSize, short replication, long blockSize,
       Progressable progress) throws IOException;
-  
-  public FSDataOutputStream appendRemote(Path f, int bufferSize, Progressable progress)
-      throws IOException; 
 
+  /**
+   * Create remote file (non-recursive)
+   * @param f path
+   * @param permission file permission
+   * @param overwrite overwrite file
+   * @param bufferSize buffer size
+   * @param replication replication factor
+   * @param blockSize block size
+   * @param progress progress listener
+   * @return output stream
+   * @throws IOException
+   */
+  public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
+      boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
+      throws IOException;
+
+  /**
+   * Append remote file
+   * @param f path
+   * @param bufferSize buffer size
+   * @param progress progress listener
+   * @return output stream
+   * @throws IOException
+   */
+  public FSDataOutputStream appendRemote(Path f, int bufferSize, Progressable progress)
+      throws IOException;
+
+  /**
+   * Rename remote file
+   * @param src source
+   * @param dst destination
+   * @return true on success, false - otherwise
+   * @throws IOException
+   */
   public boolean renameRemote(Path src, Path dst) throws IOException;
- 
+
+  /**
+   * Rename remote file with options
+   * @param src source
+   * @param dst destination
+   * @param options rename options
+   * @throws IOException
+   */
+  public void renameRemote(Path src, Path dst, Rename... options) throws IOException;
+  
+  /**
+   * Delete remote file or directory
+   * @param f file path
+   * @param recursive is operation recursive
+   * @return true on success, false  - otherwise
+   * @throws IOException
+   */
   public boolean deleteRemote(Path f, boolean recursive) throws IOException;
-  
+
+  /**
+   * Make all directories remote
+   * @param path path to a directory
+   * @param permission file permission
+   * @return true on success, false  - otherwise
+   * @throws IOException
+   * @throws FileAlreadyExistsException
+   */
   public boolean mkdirsRemote(Path path, FsPermission permission)
-      throws IOException, FileAlreadyExistsException; 
-  
+      throws IOException, FileAlreadyExistsException;
+
 }

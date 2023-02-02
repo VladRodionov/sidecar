@@ -36,6 +36,16 @@ public class Utils {
     return sb.toString();
   }
   
+  public static String join(Object[] args, String sep) {
+    StringBuffer sb = new StringBuffer();
+    for (int i = 0; i < args.length; i++) {
+      sb.append(args[i].toString());
+      if (i < args.length - 1) {
+        sb.append(sep);
+      }
+    }
+    return sb.toString();
+  }
   /**
    * Straw man - optimize
    * @param v long value

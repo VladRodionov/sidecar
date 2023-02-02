@@ -27,6 +27,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.azure.NativeAzureFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
@@ -37,7 +38,7 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
  * Sidecar caching file system for WASB native Azure FS
- * fs.wasb.impl=com.carrot.sidecar.abfs.SidecarNativeAzureBlobFileSystem
+ * fs.wasb.impl=com.carrot.sidecar.wasb.SidecarNativeAzureBlobFileSystem
  */
 public class SidecarNativeAzureBlobFileSystem extends NativeAzureFileSystem 
   implements MetaDataCacheable, CachingFileSystem {
@@ -134,7 +135,13 @@ public class SidecarNativeAzureBlobFileSystem extends NativeAzureFileSystem
   public boolean renameRemote(Path src, Path dst) throws IOException {
     return super.rename(src, dst);
   }
-
+  
+  @SuppressWarnings("deprecation")
+  @Override
+  public void renameRemote(Path src, Path dst, Rename... options) throws IOException {
+    super.rename(src, dst, options);
+  }
+  
   @Override
   public boolean deleteRemote(Path f, boolean recursive) throws IOException {
     return super.delete(f, recursive);

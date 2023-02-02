@@ -19,7 +19,7 @@ package com.carrot.sidecar.wasb;
 
 /**
  * Sidecar caching file system for secure WASB native Azure FS
- * fs.wasbs.impl=com.carrot.sidecar.abfs.SecureSidecarNativeAzureBlobFileSystem
+ * fs.wasbs.impl=com.carrot.sidecar.wasb.SecureSidecarNativeAzureBlobFileSystem
  */
 public class SecureSidecarNativeAzureBlobFileSystem extends SidecarNativeAzureBlobFileSystem {
 

@@ -28,6 +28,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
@@ -131,6 +132,12 @@ public class SidecarTestFileSystem extends LocalFileSystem implements CachingFil
   @Override
   public boolean renameRemote(Path src, Path dst) throws IOException {
     return super.rename(src, dst);
+  }
+  
+  @Override
+  public void renameRemote(Path src, Path dst, Rename... options) throws IOException
+  {
+    super.rename(src, dst, options);
   }
 
   @Override

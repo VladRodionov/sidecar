@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
@@ -35,6 +36,10 @@ import com.carrot.sidecar.CachingFileSystem;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
+/**
+ * Sidecar caching File System for Amazon s3 Object Store
+ * fs.s3a.impl=com.carrot.sidecar.s3a.SidecarS3AFileSystem
+ */
 public class SidecarS3AFileSystem extends S3AFileSystem 
   implements MetaDataCacheable, CachingFileSystem {
 
@@ -128,6 +133,13 @@ public class SidecarS3AFileSystem extends S3AFileSystem
   @Override
   public boolean renameRemote(Path src, Path dst) throws IOException {
     return super.rename(src, dst);
+  }
+  
+  @SuppressWarnings("deprecation")
+  @Override
+  public void renameRemote(Path src, Path dst, Rename... options) throws IOException
+  {
+    super.rename(src, dst, options);
   }
 
   @Override

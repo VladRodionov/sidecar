@@ -53,6 +53,7 @@ import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.BlockingThreadPoolExecutorService;
@@ -1001,6 +1002,42 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    **********************************************************************************/
   
   /**
+   * Concatenate existing files together.
+   * Some File Systems (ADL Gen1) supports this API
+   * @param trg the path to the target destination.
+   * @param psrcs the paths to the sources to use for the concatenation.
+   * @throws IOException IO failure
+   * @throws UnsupportedOperationException if the operation is unsupported
+   *         (default).
+   */
+  public void concat(final Path trg, final Path [] psrcs) throws IOException {
+    LOG.debug("Concat to {} files {}", com.carrot.sidecar.util.Utils.join(psrcs, "\n"));
+    if (writeCacheEnabled) {
+      // Caching file system does not support concat?
+      // HDFS - does not support - so delete files from caching
+      for (Path p : psrcs) {
+        Path cachedPath = remoteToCachingPath(p);
+        // Remove from write-cache file list
+        writeCacheFileList.remove(cachedPath.toString());
+        // Delete file
+        writeCacheFS.delete(cachedPath, false);
+      }
+    }
+    // Clear data cache asynchronously
+    Runnable r = () -> {
+      for (Path p: psrcs) {
+        long len = metaGet(p);
+        if (len > 0) {
+          metaDelete(p);
+          evictDataPages(p, len);
+        }
+      }
+    };
+    unboundedThreadPool.submit(r);
+    ((CachingFileSystem)remoteFS).concatRemote(trg, psrcs);
+  }
+  
+  /**
    * Open file 
    * @param path path to the file
    * @param bufferSize buffer size
@@ -1206,6 +1243,43 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return result;
   }
 
+  public void rename(Path src, Path dst, Rename... options) throws IOException {
+    LOG.info("Rename with options {}\n to {}", src, dst);
+    // Check if src is file
+    boolean isFile = isFile(src);
+    ((CachingFileSystem) remoteFS).renameRemote(src, dst, options);
+    if (isFile) {
+      long len = metaGet(src);
+      if (len > 0) {
+        metaDelete(src);
+        metaPut(dst, len);
+      }
+      // Clear data pages cache
+      Runnable r = () -> {
+        evictDataPages(src, len);
+        // Update meta cache
+      };
+      unboundedThreadPool.submit(r);
+      if (!this.writeCacheEnabled) {
+        return ;
+      }
+
+      Path cacheSrc = null, cacheDst = null;
+      try {
+        cacheSrc = remoteToCachingPath(src);
+        cacheDst = remoteToCachingPath(dst);
+        if (this.writeCacheFS.exists(cacheSrc)) {
+          this.writeCacheFS.rename(cacheSrc, cacheDst);
+          // Remove from write-cache file list
+          writeCacheFileList.remove(cacheSrc.toString());
+        }
+      } catch (IOException e) {
+        LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);
+      }
+    }
+  }
+
+  
   public boolean delete(Path f, boolean recursive) throws IOException {
 
     LOG.debug("Delete {} recursive={}", f, recursive);

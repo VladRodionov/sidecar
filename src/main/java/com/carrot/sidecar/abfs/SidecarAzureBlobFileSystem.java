@@ -23,6 +23,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
@@ -32,7 +33,7 @@ import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
- * Sidecar caching file system for ABFS
+ * Sidecar caching file system for ABFS Azure Data Lake Gen 2
  * fs.abfs.impl=com.carrot.sidecar.abfs.SidecarAzureBlobFileSystem
  */
 
@@ -122,7 +123,13 @@ public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem
   public boolean renameRemote(Path src, Path dst) throws IOException {
     return super.rename(src, dst);
   }
-
+  
+  @SuppressWarnings("deprecation")
+  @Override
+  public void renameRemote(Path src, Path dst, Rename... options) throws IOException {
+    super.rename(src, dst, options);
+  }
+  
   @Override
   public boolean deleteRemote(Path f, boolean recursive) throws IOException {
     return super.delete(f, recursive);
