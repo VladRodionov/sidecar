@@ -28,6 +28,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.carrot.sidecar.WriteCacheMode;
+
 public class SidecarConfig extends Properties {
   private static final long serialVersionUID = 1L;
   private static final Logger LOG = LoggerFactory.getLogger(SidecarConfig.class);
@@ -37,9 +39,7 @@ public class SidecarConfig extends Properties {
   public final static String DATA_CACHE_OFFHEAP_NAME = "sidecar-data-offheap";
   
   public final static String META_CACHE_NAME = "sidecar-meta-offheap";
-  
-  public final static String SIDECAR_WRITE_CACHE_ENABLED_KEY = "sidecar.write.cache.enabled";
-  
+    
   public final static String SIDECAR_WRITE_CACHE_URI_KEY = "sidecar.write.cache.uri";
   
   /** This is not a global size, but per server instance */
@@ -80,8 +80,10 @@ public class SidecarConfig extends Properties {
    * One should specify either exclude list or include list, not both
    */
   public final static String SIDECAR_INCLUDE_PATH_LIST_KEY = "sidecar.include.path.list";
-
-  public final static boolean DEFAULT_SIDECAR_WRITE_CACHE_ENABLED = false;
+  
+  public final static String SIDECAR_WRITE_CACHE_MODE_KEY = "sidecar.write.cache.mode";
+  
+  public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC;
   
   public final static long DEFAULT_SIDECAR_WRITE_CACHE_SIZE = 0;
   
@@ -137,28 +139,7 @@ public class SidecarConfig extends Properties {
   private static boolean isSidecarPropertyName(String name) {
     return name.indexOf("sidecar") == 0; // starts with side car
   }
-  
-  /**
-   * Is write cache enabled
-   * @return write cache enabled
-   */
-  public boolean isWriteCacheEnabled() {
-    String value = getProperty(SIDECAR_WRITE_CACHE_ENABLED_KEY);
-    if (value != null) {
-      return Boolean.valueOf(value);
-    }
-    return DEFAULT_SIDECAR_WRITE_CACHE_ENABLED;
-  }
-  
-  /**
-   * Set write cache enabled
-   * @param b true or false
-   */
-  public SidecarConfig setWriteCacheEnabled(boolean b) {
-    setProperty(SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.toString(b));
-    return this;
-  }
-  
+    
   /**
    * Is test mode
    * @return true or false
@@ -450,4 +431,25 @@ public class SidecarConfig extends Properties {
     return this;
   }
   
+  /** 
+   * Get write cache mode
+   * @return  write cache mode
+   */
+  public WriteCacheMode getWriteCacheMode() {
+    String value = getProperty(SIDECAR_WRITE_CACHE_MODE_KEY);
+    if (value == null) {
+      return DEFAULT_SIDECAR_WRITE_CACHE_MODE;
+    }
+    return WriteCacheMode.valueOf(value.toUpperCase());
+  }
+  
+  /**
+   * Set write cache mode
+   * @param mode write cache mode of operation
+   * @return self
+   */
+  public SidecarConfig setWriteCacheMode(WriteCacheMode mode) {
+    setProperty(SIDECAR_WRITE_CACHE_MODE_KEY, mode.getMode());
+    return this;
+  }
 }

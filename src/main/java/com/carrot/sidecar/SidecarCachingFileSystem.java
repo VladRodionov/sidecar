@@ -35,6 +35,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -114,9 +115,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private static double writeCacheEvictionStopsAt = 0.9;
 
   /*
-   * Thread pool
+   * Thread pool - static
    */
-  private ExecutorService unboundedThreadPool;
+  private static ExecutorService unboundedThreadPool;
+  
+  /**
+   * Blocking queue for above executor service
+   * We need direct access to this queue to check its size
+   * find tasks and remove them
+   */
+  private static BlockingQueue<Runnable> taskQueue;
   
   /*
    *  Data page size for data cache 
@@ -155,7 +163,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private volatile boolean writeCacheEnabled;
   
-  
+  /**
+   * Write cache mode (DISABLED, SYNC, ASYNC, ASYNC_TURBO)
+   */
+  private WriteCacheMode writeCacheMode;
   /**
    * Is meta data cacheable
    */
@@ -294,11 +305,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.dataPageSize = (int) sconfig.getDataPageSize();
       this.ioBufferSize = (int) sconfig.getIOBufferSize();
       this.ioPoolSize = (int) sconfig.getIOPoolSize();
-      this.writeCacheEnabled = sconfig.isWriteCacheEnabled();
+      this.writeCacheMode = sconfig.getWriteCacheMode();
+      this.writeCacheEnabled = writeCacheMode != WriteCacheMode.DISABLED;
+      
       if (this.writeCacheEnabled) {
         writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
         URI writeCacheURI = sconfig.getWriteCacheURI();
         if (writeCacheURI != null) {
+          // Sanity check
+          if(writeCacheURI.getScheme().startsWith("file")) {
+            this.writeCacheMode = WriteCacheMode.SYNC;
+          }
           if (sconfig.isTestMode()) {
             //TODO: we should not have this test mode at all
             this.writeCacheFS = new LocalFileSystem();
@@ -313,11 +330,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           LOG.error("Write cache location is not specified. Disable cache on write");
         }
       }
-      
       if (dataCache != null) {
         return;
       }
-
       synchronized (getClass()) {
         if (dataCache != null) {
           return;
@@ -347,24 +362,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         }
       }
       this.inited = true;
-      //TODO: make it configurable
       int coreThreads = sconfig.getSidecarThreadPoolMaxSize();
       int keepAliveTime = 60; // hard-coded
-      //TODO: should it be bounded or unbounded?
       // This is actually unbounded queue (LinkedBlockingQueue w/o parameters)
-      // and bounded thread pool - only coreThreads maximum
+      // and bounded thread pool - only coreThreads is maximum, maximum number of threads is ignored
+      taskQueue = new LinkedBlockingQueue<>();
       unboundedThreadPool = new ThreadPoolExecutor(
         coreThreads, Integer.MAX_VALUE, 
         keepAliveTime, TimeUnit.SECONDS,
-        new LinkedBlockingQueue<Runnable>(),
+        taskQueue,
         BlockingThreadPoolExecutorService.newDaemonThreadFactory(
             "sidecar-thread-pool"));
     } catch (Throwable e) {
       LOG.error(e.getMessage(), e);
       throw new IOException(e);
     }
- 
-
   }
 
   /**
@@ -776,22 +788,25 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         try {
           FSDataOutputStream os = stream.getRemoteStream();
           os.close();
-          if (writeCacheEnabled) {
-            deleteMoniker(remoteToCachingPath(path));
-          }
+          deleteMoniker(remoteToCachingPath(path));
         } catch (IOException e) {
           // TODO - how to handle exception?
           LOG.error("Closing remote stream", e);
         }
       };
-      unboundedThreadPool.submit(r);
+      if (writeCacheMode != WriteCacheMode.SYNC) {
+        unboundedThreadPool.submit(r);
+      } else {
+        //SYNC mode
+        r.run();
+      }
     } else {
       //SYNC
       try {
         FSDataOutputStream os = stream.getRemoteStream();
         // This is where all actual data transmission start
         os.close();
-        // now update meat
+        // now update meta
         metaSave(path, length);
       } catch (IOException e) {
         // TODO - how to handle exception?

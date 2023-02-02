@@ -149,7 +149,7 @@ public abstract class TestCachingFileSystemBase {
     Configuration conf = getConfiguration();
     conf.set("fs.file.impl", SidecarTestFileSystem.class.getName());
     conf.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
-    conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.TRUE.toString());
+    conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_MODE_KEY, WriteCacheMode.ASYNC.getMode());
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheMaxSize));
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_URI_KEY, writeCacheDirectory.toString());
     conf.set(SidecarConfig.SIDECAR_TEST_MODE_KEY, Boolean.TRUE.toString());

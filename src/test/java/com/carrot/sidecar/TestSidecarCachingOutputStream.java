@@ -123,7 +123,7 @@ public class TestSidecarCachingOutputStream {
     
     SidecarConfig cacheConfig = SidecarConfig.getInstance();
     cacheConfig.setJMXMetricsEnabled(false);
-    cacheConfig.setWriteCacheEnabled(useWriteCache);
+    cacheConfig.setWriteCacheMode(useWriteCache? WriteCacheMode.ASYNC: WriteCacheMode.DISABLED);
     cacheConfig.setTestMode(true); // do not install shutdown hooks
     cacheConfig.setDataCacheType(CacheType.FILE);
     if (useWriteCache) {
@@ -143,7 +143,7 @@ public class TestSidecarCachingOutputStream {
     
     configuration.set("fs.file.impl", SidecarTestFileSystem.class.getName());
     configuration.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
-    configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.TRUE.toString());
+    //configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.TRUE.toString());
     configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheSize));
     configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_URI_KEY, writeCacheDirectory.toString());
     configuration.set(SidecarConfig.SIDECAR_TEST_MODE_KEY, Boolean.TRUE.toString());
