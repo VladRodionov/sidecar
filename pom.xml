@@ -100,10 +100,33 @@
                 	</exclusion>
                 </exclusions>
         </dependency>
-<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-aws -->
+	<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-aws -->
 	<dependency>
     		<groupId>org.apache.hadoop</groupId>
     		<artifactId>hadoop-aws</artifactId>
+    		<version>${hadoop.version}</version>
+	</dependency>
+	<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-azure -->
+	<dependency>
+    		<groupId>org.apache.hadoop</groupId>
+    		<artifactId>hadoop-azure</artifactId>
+    		<version>${hadoop.version}</version>
+	</dependency>
+	<dependency>
+    		<groupId>org.apache.hadoop</groupId>
+    		<artifactId>hadoop-azure-datalake</artifactId>
+    		<version>${hadoop.version}</version>
+	</dependency>
+	<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-openstack -->
+	<dependency>
+    		<groupId>org.apache.hadoop</groupId>
+    		<artifactId>hadoop-openstack</artifactId>
+    		<version>${hadoop.version}</version>
+        </dependency>
+	<!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-aliyun -->
+	<dependency>
+    		<groupId>org.apache.hadoop</groupId>
+    		<artifactId>hadoop-aliyun</artifactId>
     		<version>${hadoop.version}</version>
 	</dependency>
         <dependency>

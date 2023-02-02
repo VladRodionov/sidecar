@@ -354,6 +354,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
               }
               // we save write cache file list even if persistence == false
               saveWriteCacheFileListCache();
+              //TODO: shutdown thread pool
+              
               LOG.info("Shutdown hook installed for cache[lru-cache]");
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
