@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
@@ -33,7 +34,7 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.swift.snative.SwiftNativeFileSystem;
 import org.apache.hadoop.util.Progressable;
 
-import com.carrot.sidecar.CachingFileSystem;
+import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
@@ -46,7 +47,7 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  */
 
 public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem 
-  implements MetaDataCacheable, CachingFileSystem
+  implements MetaDataCacheable, RemoteFileSystemAccess
 {
   private SidecarCachingFileSystem sidecar;
   
@@ -57,6 +58,15 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
     this.sidecar.initialize(name, originalConf);
+  }
+  
+  /**
+   * File System API
+   */
+  
+  @Override
+  public FileStatus getFileStatus(Path p) throws IOException {
+    return sidecar.getFileStatus(p);
   }
   
   @Override
@@ -164,5 +174,10 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
   @Override
   public void concatRemote(Path trg, Path[] pathes) throws IOException {
     super.concat(trg, pathes);
+  }
+  
+  @Override
+  public FileStatus getFileStatusRemote(Path p) throws IOException {
+    return super.getFileStatus(p);
   }
 }

@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
@@ -36,7 +37,7 @@ import org.apache.hadoop.util.Progressable;
  * For testing only
  *
  */
-public class SidecarTestFileSystem extends LocalFileSystem implements CachingFileSystem{
+public class SidecarTestFileSystem extends LocalFileSystem implements RemoteFileSystemAccess{
   
   private SidecarCachingFileSystem sidecar;
 
@@ -51,6 +52,15 @@ public class SidecarTestFileSystem extends LocalFileSystem implements CachingFil
     this.sidecar.initialize(name, originalConf);
   }
 
+  /**
+   * File System API
+   */
+  
+  @Override
+  public FileStatus getFileStatus(Path p) throws IOException {
+    return sidecar.getFileStatus(p);
+  }
+  
   @Override
   public FSDataInputStream open(Path f, int bufferSize) throws IOException {
     return sidecar.open(f, bufferSize);
@@ -156,5 +166,10 @@ public class SidecarTestFileSystem extends LocalFileSystem implements CachingFil
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
+  }
+
+  @Override
+  public FileStatus getFileStatusRemote(Path p) throws IOException {
+    return super.getFileStatus(p);
   }
 }

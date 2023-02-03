@@ -9,13 +9,14 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.adl.AdlFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
-import com.carrot.sidecar.CachingFileSystem;
+import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
@@ -25,7 +26,7 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * fs.adl.impl=com.carrot.sidecar.adl.SidecarAdlFileSystem
  */
 public class SidecarAdlFileSystem extends AdlFileSystem 
-  implements MetaDataCacheable, CachingFileSystem{
+  implements MetaDataCacheable, RemoteFileSystemAccess{
   
   private SidecarCachingFileSystem sidecar;
   
@@ -40,6 +41,11 @@ public class SidecarAdlFileSystem extends AdlFileSystem
     this.sidecar.initialize(name, originalConf);
   }
 
+  @Override
+  public FileStatus getFileStatus(Path p) throws IOException {
+    return sidecar.getFileStatus(p);
+  }
+  
   @Override
   public FSDataInputStream open(Path f, int bufferSize) throws IOException {
     return sidecar.open(f, bufferSize);
@@ -170,5 +176,9 @@ public class SidecarAdlFileSystem extends AdlFileSystem
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
   }
-
+  
+  @Override
+  public FileStatus getFileStatusRemote(Path p) throws IOException {
+    return super.getFileStatus(p);
+  }
 }

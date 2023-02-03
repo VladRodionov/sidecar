@@ -26,12 +26,13 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
-import com.carrot.sidecar.CachingFileSystem;
+import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
@@ -43,7 +44,7 @@ import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
  */
 
 public class SidecarGoogleHadoopFileSystem extends GoogleHadoopFileSystem 
-implements MetaDataCacheable, CachingFileSystem {
+implements MetaDataCacheable, RemoteFileSystemAccess {
   
   private SidecarCachingFileSystem sidecar;
   
@@ -54,6 +55,11 @@ implements MetaDataCacheable, CachingFileSystem {
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
     this.sidecar.initialize(name, originalConf);
+  }
+  
+  @Override
+  public FileStatus getFileStatus(Path p) throws IOException {
+    return sidecar.getFileStatus(p);
   }
   
   /**
@@ -176,4 +182,8 @@ implements MetaDataCacheable, CachingFileSystem {
     super.concat(trg, pathes);
   }
 
+  @Override
+  public FileStatus getFileStatusRemote(Path p) throws IOException {
+    return super.getFileStatus(p);
+  }
 }

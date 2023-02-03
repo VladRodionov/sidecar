@@ -26,13 +26,14 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.s3a.S3AFileSystem;
 import org.apache.hadoop.util.Progressable;
 
-import com.carrot.sidecar.CachingFileSystem;
+import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
@@ -41,12 +42,21 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * fs.s3a.impl=com.carrot.sidecar.s3a.SidecarS3AFileSystem
  */
 public class SidecarS3AFileSystem extends S3AFileSystem 
-  implements MetaDataCacheable, CachingFileSystem {
+  implements MetaDataCacheable, RemoteFileSystemAccess {
 
   private SidecarCachingFileSystem sidecar;
   
   public SidecarS3AFileSystem() {}
+  
+  /**
+   * File System API
+   */
 
+  @Override
+  public FileStatus getFileStatus(Path p) throws IOException {
+    return sidecar.getFileStatus(p);
+  }
+  
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);
@@ -157,5 +167,10 @@ public class SidecarS3AFileSystem extends S3AFileSystem
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
+  }
+  
+  @Override
+  public FileStatus getFileStatusRemote(Path p) throws IOException {
+    return super.getFileStatus(p);
   }
 }

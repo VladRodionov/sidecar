@@ -192,7 +192,7 @@ public abstract class TestCachingFileSystemBase {
     FileStatus fst =  fs.getFileStatus(p);
     assertEquals(buf.length, fst.getLen());
     
-    SidecarCachingFileSystem sidecar = ((CachingFileSystem) fs).getCachingFileSystem();
+    SidecarCachingFileSystem sidecar = ((RemoteFileSystemAccess) fs).getCachingFileSystem();
     FileSystem writeCacheFS = sidecar.getWriteCacheFS();
     Path cachedPath = sidecar.remoteToCachingPath(p);
     fst = writeCacheFS.getFileStatus(cachedPath);
@@ -228,12 +228,6 @@ public abstract class TestCachingFileSystemBase {
     
     assertFalse(fs.exists(newPath));
     assertFalse(writeCacheFS.exists(newCachedPath));
-    
     fs.close();
-
-    
   }
-
-   
-  
 }

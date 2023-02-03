@@ -24,12 +24,13 @@ import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
-public interface CachingFileSystem {
+public interface RemoteFileSystemAccess {
 
   /**
    * Get caching file system
@@ -37,7 +38,13 @@ public interface CachingFileSystem {
    */
   public SidecarCachingFileSystem getCachingFileSystem();
 
-  
+  /**
+   * Get file status from remote FS
+   * @param p file path
+   * @return file status
+   * @throws IOException
+   */
+  public FileStatus getFileStatusRemote(Path p) throws IOException;
   /**
    * Concatenate remote files
    * @param trg target file
