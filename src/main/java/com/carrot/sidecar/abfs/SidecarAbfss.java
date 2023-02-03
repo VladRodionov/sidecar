@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.s3a;
+package com.carrot.sidecar.abfs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,28 +25,26 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
-import org.apache.hadoop.fs.s3a.Constants;
+import org.apache.hadoop.fs.azurebfs.constants.FileSystemUriSchemes;
 
 /**
- * Sidecar - backed S3A implementation of AbstractFileSystem.
- * This implementation delegates to the SidecarS3AFileSystem. This is used 
+ * Sidecar - backed Secure Azure Blob File System implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarAzureBlobFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file system
  * 
  * Hadoop configuration:
- * 
- * fs.AbstractFileSystem.s3a.impl=com.carrot.sidecar.s3a.SidecarS3A
- * 
+ * fs.AbstractFileSystem.abfss.impl=com.carrot.sidecar.abfs.SidecarAbfss
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarS3A extends DelegateToFileSystem {
+public class SidecarAbfss extends DelegateToFileSystem{
 
-  public SidecarS3A(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarS3AFileSystem(), conf, "s3a", false);
+  public SidecarAbfss(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SecureSidecarAzureBlobFileSystem(), conf, FileSystemUriSchemes.ABFS_SECURE_SCHEME, false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return Constants.S3A_DEFAULT_PORT;
+    return -1;
   }
 }
