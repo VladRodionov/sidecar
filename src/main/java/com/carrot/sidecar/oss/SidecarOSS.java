@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.wasb;
+package com.carrot.sidecar.oss;
 
 import java.io.IOException;
 import java.net.URI;
@@ -27,19 +27,19 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
 
 /**
- * Sidecar - backed Azure  Secure Native Blob Storage implementation of AbstractFileSystem.
- * This impl delegates to the SecureSidecarNativeAzureBlobFileSystem. This is used 
+ * Sidecar - backed Aliyun OSS implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarAliyunOSSFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file systems
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.wasbs.impl=com.carrot.sidecar.wasb.SidecarWasbs
+ * fs.AbstractFileSystem.oss.impl=com.carrot.sidecar.oss.SidecarOSS
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarWasbs extends DelegateToFileSystem{
+public class SidecarOSS extends DelegateToFileSystem{
 
-  public SidecarWasbs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SecureSidecarNativeAzureBlobFileSystem(), conf, "wasbs", false);
+  public SidecarOSS(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarAliyunOSSFileSystem(), conf, "oss", false);
   }
 
   @Override
