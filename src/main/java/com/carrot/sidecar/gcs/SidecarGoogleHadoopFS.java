@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.hdfs;
+package com.carrot.sidecar.gcs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,32 +25,27 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
-import org.apache.hadoop.hdfs.HdfsConfiguration;
-import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
-import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+
+import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 
 /**
- * Sidecar - backed HDFS implementation of AbstractFileSystem.
- * This impl delegates to the SidecarDistributedFileSystem. This is used 
+ * Sidecar - backed Google Cloud Storage implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarGoogleHadoopFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file systems
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.hdfs.impl=com.carrot.sidecar.hdfs.SidecarHdfs
+ * fs.AbstractFileSystem.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFS
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarHdfs extends DelegateToFileSystem{
+public class SidecarGoogleHadoopFS extends DelegateToFileSystem{
 
-  static {
-    HdfsConfiguration.init();
-  }
-  
-  public SidecarHdfs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarDistributedFileSystem(), conf, HdfsConstants.HDFS_URI_SCHEME, false);
+  public SidecarGoogleHadoopFS(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarGoogleHadoopFileSystem(), conf, GoogleCloudStorageFileSystem.SCHEME, false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return HdfsClientConfigKeys.DFS_NAMENODE_RPC_PORT_DEFAULT;
+    return -1; // ports are not used in GCS
   }
 }
