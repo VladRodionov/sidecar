@@ -361,8 +361,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
               }
               // we save write cache file list even if persistence == false
               saveWriteCacheFileListCache();
+              shutdownExecutorService();
               //TODO: shutdown thread pool
-              
               LOG.info("Shutdown hook installed for cache[lru-cache]");
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
@@ -388,6 +388,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
 
+  private void shutdownExecutorService() {
+    unboundedThreadPool.shutdownNow();
+    boolean result = false;
+    while (!result) {
+      try {
+        // Unsafe operations: COPY, CLOSE (COPY)
+        // Is it safe interrupt them?
+        // Are they idempotent?
+        result = unboundedThreadPool.awaitTermination(5, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        // TODO Auto-generated catch block
+        Thread.interrupted();
+      }
+      LOG.info("Waiting for executor service, task queue length={}", taskQueue.size() );
+    }
+  }
   /**
    * For testing only (not visible outside the package)
    */
