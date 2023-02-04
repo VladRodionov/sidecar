@@ -23,7 +23,7 @@ import java.io.IOException;
 import org.junit.Before;
 import org.junit.Test;
 
-public class TestFIFOCache {
+public class TestFileListCache {
   int num = 10;
   LRUCache<String, Long> cache;
   
@@ -45,12 +45,12 @@ public class TestFIFOCache {
   }
   
   @Test
-  public void testFIFOCachePutGetRemove() {
+  public void testCachePutGetRemove() {
     verify();
   }
   
   @Test
-  public void testFIFOCacheSaveLoad() throws IOException {
+  public void testCacheSaveLoad() throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     cache.save(baos);
     byte[] buf = baos.toByteArray();

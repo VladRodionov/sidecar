@@ -173,6 +173,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private boolean metaCacheable;
   
+  /**
+   * Remote FS is not safe, files can be changed
+   */
+  private boolean remoteMutable;
+  
   /*
    *  Write cache maximum size (per server instance)
    */
@@ -308,6 +313,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.ioPoolSize = (int) sconfig.getIOPoolSize();
       this.writeCacheMode = sconfig.getWriteCacheMode();
       this.writeCacheEnabled = writeCacheMode != WriteCacheMode.DISABLED;
+      this.remoteMutable = sconfig.areRemoteFilesMutable();
       
       if (this.writeCacheEnabled) {
         writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
@@ -1006,7 +1012,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   private boolean isPotentiallyMutable(Path p) {
     //TODO
-    return false;
+    return this.remoteMutable;
   }
   
   /**

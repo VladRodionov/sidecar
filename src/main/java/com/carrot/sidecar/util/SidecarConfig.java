@@ -83,6 +83,12 @@ public class SidecarConfig extends Properties {
   
   public final static String SIDECAR_WRITE_CACHE_MODE_KEY = "sidecar.write.cache.mode";
   
+  /**
+   * Remote files mutable? In general? Mutability means, file content 
+   * can be changed after creation (append or full rewrite)
+   */
+  public final static String SIDECAR_REMOTE_FILES_MUTABLE_KEY = "sidecar.remote.files.mutable";
+  
   public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC;
   
   public final static long DEFAULT_SIDECAR_WRITE_CACHE_SIZE = 0;
@@ -104,6 +110,8 @@ public class SidecarConfig extends Properties {
   public final static boolean DEFAULT_SIDECAR_PERSISTENT_CACHE = true;
   
   public final static int DEFAULT_SIDECAR_THREAD_POOL_MAX_SIZE = 8;
+  
+  public final static boolean DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE = true;
   
   
   private static SidecarConfig instance;
@@ -451,5 +459,28 @@ public class SidecarConfig extends Properties {
   public SidecarConfig setWriteCacheMode(WriteCacheMode mode) {
     setProperty(SIDECAR_WRITE_CACHE_MODE_KEY, mode.getMode());
     return this;
+  }
+  
+  /**
+   * Set remote files mutable
+   * @param b true or false
+   * @return self
+   */
+  public SidecarConfig setRemoteFilesMutable(boolean b) {
+    setProperty(SIDECAR_REMOTE_FILES_MUTABLE_KEY, Boolean.toString(b));
+    return this;
+  }
+  
+  /**
+   * Are remote files potentially mutable
+   * @return true or false
+   */
+  public boolean areRemoteFilesMutable() {
+    String value = getProperty(SIDECAR_REMOTE_FILES_MUTABLE_KEY);
+    if (value != null) {
+      return Boolean.parseBoolean(value);
+    }
+    return DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE;
+ 
   }
 }
