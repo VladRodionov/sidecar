@@ -20,6 +20,8 @@ package com.carrot.sidecar.util;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import org.apache.hadoop.fs.Path;
+
 import com.carrot.cache.util.UnsafeAccess;
 
 
@@ -95,4 +97,29 @@ public class Utils {
       return digest;
   }
   
+  public static byte[] getBaseKey(Path path, long modificationTime)  {
+    MessageDigest md = null;
+    try {
+      md = MessageDigest.getInstance("MD5");
+    } catch (NoSuchAlgorithmException e) {
+    }
+    String skey = path.toString() + Path.SEPARATOR + modificationTime;
+    md.update(skey.getBytes());
+    byte[] digest = md.digest();
+    byte[] baseKey = new byte[digest.length + 8];
+    System.arraycopy(digest, 0, baseKey, 0, digest.length);
+    return baseKey;
+  }
+  
+  public static byte[] getKey(byte[] baseKey, long offset, long dataPageSize) {
+    int size = baseKey.length;
+    offset = offset / dataPageSize * dataPageSize;
+    for (int i = 0; i < 8; i++) {
+      int rem = (int) (offset % 256);
+      baseKey[size - i - 1] = (byte) rem;
+      offset /= 256;
+    }
+    return baseKey;
+  }
+
 }

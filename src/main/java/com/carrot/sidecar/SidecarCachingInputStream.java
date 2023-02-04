@@ -15,30 +15,29 @@ package com.carrot.sidecar;
 
 import static com.carrot.sidecar.util.Utils.checkArgument;
 import static com.carrot.sidecar.util.Utils.checkState;
+import static com.carrot.sidecar.util.Utils.getBaseKey;
+import static com.carrot.sidecar.util.Utils.getKey;
 
 import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.Callable;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
 import org.apache.hadoop.fs.ByteBufferReadable;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PositionedReadable;
 import org.apache.hadoop.fs.Seekable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
-import com.carrot.cache.util.Utils;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @NotThreadSafe
 public class SidecarCachingInputStream extends InputStream 
@@ -116,16 +115,33 @@ public class SidecarCachingInputStream extends InputStream
   /**
    * Constructor 
    * @param cache parent cache
+   * @param status file status
+   * @param remoteStreamCall external input stream callable
+   * @param ccheStreamFuture cache input stream callable
+   * @param pageSize page size
+   * @param bufferSize I/O buffer size (at least as large as page size)
+   */
+  public SidecarCachingInputStream(Cache cache, FileStatus status, Callable<FSDataInputStream> remoteStreamCall, 
+      Callable<FSDataInputStream> cacheStreamCall,
+       int pageSize, int bufferSize) {
+    this(cache, status.getPath(), remoteStreamCall, cacheStreamCall, status.getModificationTime(), 
+      status.getLen(), pageSize, bufferSize);
+  }
+  
+  /**
+   * Constructor 
+   * @param cache parent cache
    * @param path file path
    * @param remoteStreamCall external input stream callable
    * @param ccheStreamFuture cache input stream callable
+   * @param modTime modification time
    * @param fileLength file length
    * @param pageSize page size
    * @param bufferSize I/O buffer size (at least as large as page size)
    */
   public SidecarCachingInputStream(Cache cache, Path path, Callable<FSDataInputStream> remoteStreamCall, 
-      Callable<FSDataInputStream> cacheStreamCall,
-      long fileLength, int pageSize, int bufferSize) {
+      Callable<FSDataInputStream> cacheStreamCall, long modTime, long fileLength,
+       int pageSize, int bufferSize) {
     this.cache = cache;
     this.remoteStreamCallable = remoteStreamCall;
     this.cacheStreamCallable = cacheStreamCall;
@@ -137,11 +153,7 @@ public class SidecarCachingInputStream extends InputStream
       this.bufferSize += this.pageSize;
     }
     this.fileLength = fileLength;
-    try {
-      initBaseKey(path);
-    } catch (NoSuchAlgorithmException e) {
-      // Should not happen
-    }
+    this.baseKey = getBaseKey(path, modTime);
     // Must always be > 0 for performance 
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
@@ -170,13 +182,15 @@ public class SidecarCachingInputStream extends InputStream
     return null;
   }
   
-  private void initBaseKey(Path path) throws NoSuchAlgorithmException {
-    MessageDigest md = MessageDigest.getInstance("MD5");
-    md.update(path.toString().getBytes());
-    byte[] digest = md.digest();
-    this.baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
-    System.arraycopy(digest, 0, this.baseKey, 0, digest.length);
-  }
+//  private void initBaseKey(Path path, long modTime) throws NoSuchAlgorithmException {
+//    MessageDigest md = MessageDigest.getInstance("MD5");
+//    String spath = path.toString();
+//    spath += Path.SEPARATOR + modTime; 
+//    md.update(spath.getBytes());
+//    byte[] digest = md.digest();
+//    this.baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
+//    System.arraycopy(digest, 0, this.baseKey, 0, digest.length);
+//  }
   
   @Override
   public int read(byte[] bytesBuffer, int offset, int length) throws IOException {
@@ -239,7 +253,7 @@ public class SidecarCachingInputStream extends InputStream
     // This is the assumption which is not always correct ???
     int bytesLeftInPage = (int) (this.pageSize - currentPageOffset);
     int bytesToReadInPage = Math.min(bytesLeftInPage, length);
-    byte[] key = getKey(currentPage * this.pageSize);
+    byte[] key = getKey(this.baseKey, currentPage * this.pageSize, this.pageSize);
     
     int bytesRead = (int) dataPageGetRange(key,  currentPageOffset, bytesToReadInPage, bytesBuffer, offset);
     if (bytesRead > 0) {
@@ -321,7 +335,7 @@ public class SidecarCachingInputStream extends InputStream
     boolean[] res = new boolean[n];
     long pos = r.start;
     for (int i = 0; i < n; i++) {
-      byte[] key = getKey(pos);
+      byte[] key = getKey(this.baseKey, pos, this.pageSize);
       res[i] =  dataPageExists(key); 
       pos += this.pageSize;
     }
@@ -450,7 +464,7 @@ public class SidecarCachingInputStream extends InputStream
       long pos = pageRange.start;
       for (int i = 0; i < diff.length; i++) {
         if (diff[i]) {
-          byte[] key = getKey(pos);
+          byte[] key = getKey(this.baseKey, pos, this.pageSize);
           int size = (int) Math.min(this.pageSize, this.bufferEndOffset - pos);
           dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), size);
         }
@@ -483,7 +497,7 @@ public class SidecarCachingInputStream extends InputStream
     long pos = pageRange.start;
     for (int i = 0; i < in_cache.length; i++) {
       if (!in_cache[i]) {
-        byte[] key = getKey(pos);
+        byte[] key = getKey(this.baseKey, pos, this.pageSize);
         int size = (int) Math.min(this.pageSize, this.fileLength - pos);
         dataPagePut(key, 0, key.length, buf, i * this.pageSize, size);
       }
@@ -859,17 +873,6 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public boolean seekToNewSource(long targetPos) throws IOException {
     throw new IOException("This method is not supported.");
-  }
-  
-  private byte[] getKey(long offset) {
-    int size = this.baseKey.length;
-    offset = offset / pageSize * pageSize;
-    for (int i = 0; i < Utils.SIZEOF_LONG; i++) {
-      int rem = (int) (offset % 256);
-      this.baseKey[size - i - 1] = (byte) rem;
-      offset /= 256;
-    }
-    return this.baseKey;
   }
   
 }

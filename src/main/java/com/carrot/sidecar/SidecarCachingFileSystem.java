@@ -19,6 +19,8 @@ package com.carrot.sidecar;
 
 import static com.carrot.sidecar.util.SidecarConfig.DATA_CACHE_FILE_NAME;
 import static com.carrot.sidecar.util.SidecarConfig.META_CACHE_NAME;
+import static com.carrot.sidecar.util.Utils.getBaseKey;
+import static com.carrot.sidecar.util.Utils.getKey;
 import static com.carrot.sidecar.util.Utils.hashCrypto;
 import static com.carrot.sidecar.util.Utils.join;
 
@@ -29,8 +31,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -778,10 +778,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Evict data pages for {} length={}", path, status.getLen());
 
     long size = status.getLen();
-    byte[] baseKey = getBaseKey(qualified);
+    byte[] baseKey = getBaseKey(qualified, status.getModificationTime());
     long off = 0;
     while (off < size) {
-      byte[] key = getKey(baseKey, off);
+      byte[] key = getKey(baseKey, off, dataPageSize);
       try {
         boolean res = dataCache.delete(key);
         LOG.debug("Delete {} result={}", off, res);
@@ -889,32 +889,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     dataDeleteFile(path, status);
   }
   
-  private byte[] getBaseKey(Path path)  {
-    MessageDigest md = null;
-    try {
-      md = MessageDigest.getInstance("MD5");
-    } catch (NoSuchAlgorithmException e) {
-    }
-    md.update(path.toString().getBytes());
-    byte[] digest = md.digest();
-    byte[] baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
-    System.arraycopy(digest, 0, baseKey, 0, digest.length);
-    return baseKey;
-  }
-  
-  private long getFileLength(Path p) throws IOException {
-    FileStatus status = null;
-    long len = (status = metaGet(p)) == null ? -1 : status.getLen();
-    if (len > 0) {
-      return len;
-    }
-    // This can throw FileNotFound exception
-    FileStatus fs = remoteFS.getFileStatus(p);
-    len = fs.getLen();
-    metaSave(p, fs);
-    return len;
-  }
-  
+   
   private boolean isFile(Path p) throws IOException {
     boolean result;
     if (metaExists(p)) {
@@ -929,16 +904,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return result;
   }
   
-  private byte[] getKey(byte[] baseKey, long offset) {
-    int size = baseKey.length;
-    offset = offset / dataPageSize * dataPageSize;
-    for (int i = 0; i < Utils.SIZEOF_LONG; i++) {
-      int rem = (int) (offset % 256);
-      baseKey[size - i - 1] = (byte) rem;
-      offset /= 256;
-    }
-    return baseKey;
-  }
   
   /**
    * File eviction from write cache
@@ -1119,18 +1084,18 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public FSDataInputStream open(Path path, int bufferSize) throws IOException {
 
     LOG.debug("Open {}", path);
-        
+    final Path qPath = isQualified(path)? path: this.remoteFS.makeQualified(path);
+
     Callable<FSDataInputStream> remoteCall = () -> {
-      return ((RemoteFileSystemAccess)remoteFS).openRemote(path, bufferSize);
+      return ((RemoteFileSystemAccess)remoteFS).openRemote(qPath, bufferSize);
     };
     Path writeCachePath = remoteToCachingPath(path);
     Callable<FSDataInputStream> cacheCall = () -> {
       return writeCacheFS == null? null: writeCacheFS.open(writeCachePath, bufferSize);
     };
-    
-    long fileLength = getFileLength(path);
+    FileStatus status = getFileStatus(qPath);
     FSDataInputStream cachingInputStream =
-        new FSDataInputStream(new SidecarCachingInputStream(dataCache, path, remoteCall, cacheCall, fileLength,
+        new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
             dataPageSize, ioBufferSize));
     return cachingInputStream;
   }

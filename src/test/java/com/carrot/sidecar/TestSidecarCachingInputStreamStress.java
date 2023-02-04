@@ -194,7 +194,7 @@ public class TestSidecarCachingInputStreamStress {
     long fileLength = fileSize;
     try (
         SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
-            new Path(this.sourceFile.toURI()), extStreamCall, cacheStreamCall, fileLength, pageSize, ioBufferSize);) 
+            new Path(this.sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, ioBufferSize);) 
     {
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
