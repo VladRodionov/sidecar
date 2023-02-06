@@ -45,6 +45,26 @@ public class SidecarCachingInputStream extends InputStream
 
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingInputStream.class);
 
+  /* Pool which keeps I/O buffers to read from cache directly */
+  private static ObjectPool<byte[]> ioPool = new ObjectPool<byte[]>(32);
+  
+  /* Pool which keeps page buffers to read from external source */
+  private static ObjectPool<byte[]> pagePool = new ObjectPool<byte[]>(32);
+  
+  static synchronized void initIOPools(int size) {
+    if (ioPool == null || ioPool.getMaxSize() != size) {
+      ioPool = new ObjectPool<byte[]>(size);
+    }
+    if (pagePool == null || pagePool.getMaxSize() != size) {
+      pagePool = new ObjectPool<byte[]>(size);
+    }
+  }
+  
+  /**
+   * Path to the remote file
+   */
+  private Path path;
+  
   /** The length of the external file*/
   private long fileLength;
   
@@ -97,20 +117,12 @@ public class SidecarCachingInputStream extends InputStream
   
   private long gets = 0;
   
-  /* Pool which keeps I/O buffers to read from cache directly */
-  private static ObjectPool<byte[]> ioPool = new ObjectPool<byte[]>(32);
+  private long bytesReadFromRemote = 0;
   
-  /* Pool which keeps page buffers to read from external source */
-  private static ObjectPool<byte[]> pagePool = new ObjectPool<byte[]>(32);
+  private long bytesReadFromWriteCache = 0;
   
-  static synchronized void initIOPools(int size) {
-    if (ioPool == null || ioPool.getMaxSize() != size) {
-      ioPool = new ObjectPool<byte[]>(size);
-    }
-    if (pagePool == null || pagePool.getMaxSize() != size) {
-      pagePool = new ObjectPool<byte[]>(size);
-    }
-  }
+  private long bytesReadFromDataCache = 0;
+  
   
   /**
    * Constructor 
@@ -152,6 +164,7 @@ public class SidecarCachingInputStream extends InputStream
     if (this.bufferSize < bufferSize || bufferSize == 0) {
       this.bufferSize += this.pageSize;
     }
+    this.path = path;
     this.fileLength = fileLength;
     this.baseKey = getBaseKey(path, modTime);
     // Must always be > 0 for performance 
@@ -159,6 +172,18 @@ public class SidecarCachingInputStream extends InputStream
     this.pageBuffer = getPageBuffer();
   }
   
+  /**
+   * Get file path
+   * @return
+   */
+  public Path getFilePath() {
+    return this.path;
+  }
+  
+  /**
+   * Approximate hit rate (used for testing)
+   * @return hit rate of the cache
+   */
   public double getHitRate() {
     return (double) (this.hits  - this.bhits)/ this.gets;
   }
@@ -169,6 +194,35 @@ public class SidecarCachingInputStream extends InputStream
       buffer = new byte[pageSize];
     }
     return buffer;
+  }
+  
+  /**
+   * Total number read from Remote FS
+   * @return number of bytes
+   */
+  public long getReadFromRemoteFS() {
+    return this.bytesReadFromRemote;
+  }
+  
+  /**
+   * Total number read from Write Cache FS
+   * @return number of bytes
+   */
+  public long getReadFromWriteCacheFS() {
+    return this.bytesReadFromWriteCache;
+  }
+  /**
+   * Total number read from local data page cache
+   * @return number of bytes
+   */
+  public long getReadFromDataCache() {
+    return this.bytesReadFromDataCache;
+  }
+  
+  void resetCounters() {
+    this.bytesReadFromDataCache = 0;
+    this.bytesReadFromRemote = 0;
+    this.bytesReadFromWriteCache = 0;
   }
   
   private byte[] getIOBuffer() {
@@ -182,15 +236,6 @@ public class SidecarCachingInputStream extends InputStream
     return null;
   }
   
-//  private void initBaseKey(Path path, long modTime) throws NoSuchAlgorithmException {
-//    MessageDigest md = MessageDigest.getInstance("MD5");
-//    String spath = path.toString();
-//    spath += Path.SEPARATOR + modTime; 
-//    md.update(spath.getBytes());
-//    byte[] digest = md.digest();
-//    this.baseKey = new byte[digest.length + Utils.SIZEOF_LONG];
-//    System.arraycopy(digest, 0, this.baseKey, 0, digest.length);
-//  }
   
   @Override
   public int read(byte[] bytesBuffer, int offset, int length) throws IOException {
@@ -275,6 +320,7 @@ public class SidecarCachingInputStream extends InputStream
         }
       }
       if (bytesRead > 0) {
+        this.bytesReadFromDataCache += bytesRead;
         return bytesRead;
       }
     }
@@ -319,6 +365,9 @@ public class SidecarCachingInputStream extends InputStream
     if (end < position + len) {
       end += Math.min(this.pageSize, this.fileLength - end);
     }
+    if (end < start) {
+    /*DEBUG*/  LOG.info("end {} < start {}", end, start);
+    }
     return new Range(start, end - start);
   }
   
@@ -330,7 +379,14 @@ public class SidecarCachingInputStream extends InputStream
   private boolean [] inCache(Range r) {
     int n = (int) (r.size() / this.pageSize);
     if (n * this.pageSize < r.size) {
-      n += 1;
+      n++;
+    }
+    long start = r.start / this.pageSize * this.pageSize;
+    if (start + n * this.pageSize < r.start + r.size) {
+      n++;
+    }
+    if (n < 0) {
+     /*DEBUG*/ LOG.info("negative array size {}", n);
     }
     boolean[] res = new boolean[n];
     long pos = r.start;
@@ -351,6 +407,10 @@ public class SidecarCachingInputStream extends InputStream
     int n = (int) (r.size() / this.pageSize);
     if (n * this.pageSize < r.size) {
       n += 1;
+    }
+    long start = r.start / this.pageSize * this.pageSize;
+    if (start + n * this.pageSize < r.start + r.size) {
+      n++;
     }
     boolean[] res = new boolean[n];
     if (this.bufferEndOffset <= r.start || this.bufferStartOffset >= r.start + r.size) {
@@ -734,24 +794,35 @@ public class SidecarCachingInputStream extends InputStream
   private int readFromRemote(long position, byte[] buffer, int bufOffset, int len)
       throws IOException {
     FSDataInputStream is = getRemoteStream();
-    return is.read(position, buffer, bufOffset, len);
+    int read = is.read(position, buffer, bufOffset, len);
+    if (read > 0) {
+      this.bytesReadFromRemote += read;
+    }
+    return read;
   }
   
   private int readFromWriteCache(long position, byte[] buffer, int bufOffset, int len) {
+    int read = -1;
     if (this.cacheStreamCallable == null) {
-      return -1;//
+      return read;//
     }
+    FSDataInputStream is = null;
     try {
-      FSDataInputStream is = getCacheStream();
+      is = getCacheStream();
       if (is == null) {
-        return -1;
+        return read;
       }
-      return is.read(position, buffer, bufOffset, len);
+      read = is.read(position, buffer, bufOffset, len);
+      if (read > 0) {
+        this.bytesReadFromWriteCache += read;
+      }
     } catch(IOException e) {
       //TODO: better exception handling?
       // Basically we close write cache input stream for this file
       // Looks OK to me
-      LOG.error("Cached input stream readFromWriteCache", e);
+      LOG.error("Reason: {}", e.getMessage());
+      // try to close input stream
+      try {is.close();} catch(IOException ee) {/* swallow */}
       this.cacheStreamCallable = null;
       this.cacheStream = null;
     }
@@ -767,6 +838,7 @@ public class SidecarCachingInputStream extends InputStream
     if (!isPositionedRead) {
       is.seek(pos + toAdvance);
     }
+    this.bytesReadFromRemote += len;
     return len;
   }
   
@@ -775,8 +847,10 @@ public class SidecarCachingInputStream extends InputStream
     if (this.cacheStreamCallable == null) {
       return -1;//
     }
+    FSDataInputStream is = null;
     try {
-      FSDataInputStream is = getCacheStream();
+      
+      is = getCacheStream();
       if (is == null) {
         return -1;
       }
@@ -785,10 +859,13 @@ public class SidecarCachingInputStream extends InputStream
       if (!isPositionedRead) {
         is.seek(pos + toAdvance);
       }
+      this.bytesReadFromWriteCache += len;
       return len;
     } catch(IOException e) {
       //TODO: better exception handling
-      LOG.error("Cached input stream", e);
+      LOG.error("Reason: {}", e.getMessage());
+      // try to close input stream
+      try {is.close();} catch(IOException ee) {/* swallow */}
       this.cacheStreamCallable = null;
       this.cacheStream = null;
     }

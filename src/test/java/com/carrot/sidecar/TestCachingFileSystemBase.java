@@ -17,8 +17,8 @@
  */
 package com.carrot.sidecar;
 
-import static com.google.common.base.Preconditions.checkState;
 import static java.nio.file.Files.createTempDirectory;
+import static com.carrot.sidecar.util.Utils.checkState;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
@@ -43,6 +43,7 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.CachedFileStatus;
 import com.carrot.sidecar.util.SidecarConfig;
 
 /**
@@ -85,7 +86,7 @@ public abstract class TestCachingFileSystemBase {
   
   protected long writeCacheMaxSize = 5L * (1 << 30);
     
-  protected int pageSize = 1 << 12; // 1MB
+  protected int pageSize = 1 << 16; // 64KB (For HBase)
   // If access is random buffer size must be small
   // reads must be aligned to a page size
   protected int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
@@ -137,10 +138,10 @@ public abstract class TestCachingFileSystemBase {
   @After 
   public void close() throws IOException {
     SidecarCachingFileSystem.dispose();
-    checkState(cacheDirectory != null);
+    checkState(cacheDirectory != null, "data cache directory is not specified");
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
     LOG.info("Deleted {}", cacheDirectory);
-    checkState(writeCacheDirectory != null);
+    checkState(writeCacheDirectory != null, "write cache directory is not specified");
     TestUtils.deletePathRecursively(writeCacheDirectory.getPath());
     LOG.info("Deleted {}", writeCacheDirectory);
   }
@@ -152,9 +153,13 @@ public abstract class TestCachingFileSystemBase {
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_MODE_KEY, WriteCacheMode.ASYNC.getMode());
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheMaxSize));
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_URI_KEY, writeCacheDirectory.toString());
-    conf.set(SidecarConfig.SIDECAR_TEST_MODE_KEY, Boolean.TRUE.toString());
+    conf.setBoolean(SidecarConfig.SIDECAR_TEST_MODE_KEY, true);
+    conf.setBoolean(SidecarConfig.SIDECAR_JMX_METRICS_ENABLED_KEY, false);
     // Set global cache directory
     conf.set(CarrotConfig.CACHE_ROOT_DIR_PATH_KEY, cacheDirectory.getPath());
+    // Files are immutable after creation
+    conf.setBoolean(SidecarConfig.SIDECAR_REMOTE_FILES_MUTABLE_KEY, false);
+    
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     // Set meta cache 
     carrotCacheConfig.setCacheMaximumSize(SidecarConfig.META_CACHE_NAME, metaCacheSize);
@@ -171,11 +176,11 @@ public abstract class TestCachingFileSystemBase {
   
   @Test
   public void testCRUD() throws IOException {
-    LOG.info("Test Create - Update - Rename - Delete");
+    LOG.info("Test Create - Update - Rename - Delete file");
     Path p = new Path(new Path(extDirectory.toString()), "testfile");
     FSDataOutputStream os = fs.create(p);
     
-    byte[] buf = new byte[1 << 16];
+    byte[] buf = new byte[1 << 18];// 256K, 4 data pages
     Random r = new Random();
     r.nextBytes(buf);
     
@@ -190,6 +195,8 @@ public abstract class TestCachingFileSystemBase {
       e.printStackTrace();
     }
     FileStatus fst =  fs.getFileStatus(p);
+    // First call must return CachedFileStatus
+    assertTrue(fst instanceof CachedFileStatus);
     assertEquals(buf.length, fst.getLen());
     
     SidecarCachingFileSystem sidecar = ((RemoteFileSystemAccess) fs).getCachingFileSystem();
@@ -197,6 +204,36 @@ public abstract class TestCachingFileSystemBase {
     Path cachedPath = sidecar.remoteToCachingPath(p);
     fst = writeCacheFS.getFileStatus(cachedPath);
     assertEquals(buf.length, fst.getLen());
+    
+    // Now read data first time
+    FSDataInputStream is = fs.open(p);
+    is.readFully(buf);
+    is.close();
+    SidecarCachingInputStream cis = (SidecarCachingInputStream) is.getWrappedStream();
+    long fromCache = cis.getReadFromDataCache();
+    long fromRemoteFS = cis.getReadFromRemoteFS();
+    long fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(0, (int) fromCache);
+    assertEquals(buf.length, (int) fromWriteCache);
+    // All reads must be from data cache now
+    is = fs.open(p);
+    is.readFully(buf);
+    is.close();
+    cis = (SidecarCachingInputStream) is.getWrappedStream();
+
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(buf.length,(int) fromCache);
+    assertEquals(0, (int) fromWriteCache);
+    
+    // Now we have some data in the cache
+    Cache dataCache = SidecarCachingFileSystem.getDataCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     
     Path newPath = new Path(new Path(extDirectory.toString()), "testfile1");
     boolean b = fs.rename(p, newPath);
@@ -211,23 +248,231 @@ public abstract class TestCachingFileSystemBase {
     assertTrue(fs.exists(newPath));
     assertTrue(writeCacheFS.exists(newCachedPath));
     
-    // Read
+    // Read renamed file
     
-    FSDataInputStream is = fs.open(newPath);
+    is = fs.open(newPath);
     is.readFully(buf);
     is.close();
-    // Now we have some data in the cache
-    Cache dataCache = SidecarCachingFileSystem.getDataCache();
-    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
+    cis = (SidecarCachingInputStream) is.getWrappedStream();
+    // Now we MUST read again everyting from write cache
+    
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    
+    // ALL reads must come from write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(0,(int) fromCache);
+    assertEquals(buf.length, (int) fromWriteCache);
     
     assertTrue(dataCache.getStorageUsed() > buf.length);
-    assertEquals(1, metaCache.activeSize());
+    assertEquals(1, (int) metaCache.activeSize());
     
-    boolean result = fs.delete(newPath, true);
+    // Read again, now from data cache
+    
+    is = fs.open(newPath);
+    is.readFully(buf);
+    is.close();
+    cis = (SidecarCachingInputStream) is.getWrappedStream();
+
+    // Now we MUST read again everyting from write cache
+    
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    
+    // ALL reads must come from write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(buf.length,(int) fromCache);
+    assertEquals(0, (int) fromWriteCache);
+   
+    // Delete file from write cache and data cache
+    fst = fs.getFileStatus(newPath);
+    sidecar.evictDataPages(newPath, fst);
+    boolean result = sidecar.deleteFromWriteCache(newPath);
     assertTrue(result);
     
+    // Read again, now from remote FS
+    is = fs.open(newPath);
+    is.readFully(buf);
+    is.close();
+    cis = (SidecarCachingInputStream) is.getWrappedStream();
+
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    
+    // ALL reads must come from remote cache
+    assertEquals(buf.length, (int) fromRemoteFS);
+    assertEquals(0,(int) fromCache);
+    assertEquals(0, (int) fromWriteCache);
+    
+    // Delete file completely
+    
+    result = fs.delete(newPath, true);
+    assertTrue(result);
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    assertEquals(0, (int) metaCache.activeSize());
+    assertEquals(0, (int) dataCache.activeSize());
+
     assertFalse(fs.exists(newPath));
     assertFalse(writeCacheFS.exists(newCachedPath));
     fs.close();
+  }
+  
+  @Test
+  public void testDeleteWriteCachedFileWhileReading() throws IOException {
+    LOG.info("Test Create - Delete file while reading data");
+    Path p = new Path(new Path(extDirectory.toString()), "testfile");
+    FSDataOutputStream os = fs.create(p);
+    
+    byte[] buf = new byte[1 << 18];// 256K, 4 data pages
+    Random r = new Random();
+    r.nextBytes(buf);
+    
+    os.write(buf, 0, buf.length);
+    // It starts thread on close!!!
+    os.close();
+    
+    try {
+      Thread.sleep(100);
+    } catch (InterruptedException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    FileStatus fst =  fs.getFileStatus(p);
+    // First call must return CachedFileStatus
+    assertTrue(fst instanceof CachedFileStatus);
+    assertEquals(buf.length, fst.getLen());
+    
+    SidecarCachingFileSystem sidecar = ((RemoteFileSystemAccess) fs).getCachingFileSystem();
+    FileSystem writeCacheFS = sidecar.getWriteCacheFS();
+    Path cachedPath = sidecar.remoteToCachingPath(p);
+    fst = writeCacheFS.getFileStatus(cachedPath);
+    assertEquals(buf.length, fst.getLen());
+    
+    
+    // Now read data first time
+    byte[] bbuf = new byte[buf.length];
+    FSDataInputStream is = fs.open(p);
+    // Read first half
+    int read = is.read(bbuf, 0, bbuf.length / 2);
+    // Verify that all reads came from write cache
+    SidecarCachingInputStream cis = (SidecarCachingInputStream) is.getWrappedStream();
+    long fromCache = cis.getReadFromDataCache();
+    long fromRemoteFS = cis.getReadFromRemoteFS();
+    long fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(0, (int) fromCache);
+    assertEquals(read, (int) fromWriteCache);
+    // Delete cached file
+    sidecar.evictDataPages(p, fst);
+    boolean result = sidecar.deleteFromWriteCache(p);
+    assertTrue(result);
+    // Reset counters
+    cis.resetCounters();
+    // Read the rest of data
+    int readRest = is.read(bbuf, read, bbuf.length - read);
+    is.close();
+    
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from write cache
+    assertEquals(readRest, (int) fromRemoteFS);
+    assertEquals(0, (int) fromCache);
+    assertEquals(0, (int) fromWriteCache);
+    assertEquals(buf.length, read + readRest);
+    assertEquals(0, Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length));
+    fs.close();
+  }
+  
+  @Test
+  public void testSaveLoad() throws IOException{
+    LOG.info("Test Create - Read - Save - Load - Read ");
+    Path p = new Path(new Path(extDirectory.toString()), "testfile");
+    FSDataOutputStream os = fs.create(p);
+    
+    byte[] buf = new byte[1 << 18];// 256K, 4 data pages
+    Random r = new Random();
+    r.nextBytes(buf);
+    
+    os.write(buf, 0, buf.length);
+    // It starts thread on close!!!
+    os.close();
+    
+    try {
+      Thread.sleep(100);
+    } catch (InterruptedException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    FileStatus fst =  fs.getFileStatus(p);
+    // First call must return CachedFileStatus
+    assertTrue(fst instanceof CachedFileStatus);
+    assertEquals(buf.length, fst.getLen());
+    
+    SidecarCachingFileSystem sidecar = ((RemoteFileSystemAccess) fs).getCachingFileSystem();
+    FileSystem writeCacheFS = sidecar.getWriteCacheFS();
+    Path cachedPath = sidecar.remoteToCachingPath(p);
+    fst = writeCacheFS.getFileStatus(cachedPath);
+    assertEquals(buf.length, fst.getLen());
+    
+    
+    // Now read data first time
+    byte[] bbuf = new byte[buf.length];
+    FSDataInputStream is = fs.open(p);
+    // Read data - fill the data page cache
+    is.read(bbuf, 0, bbuf.length);
+    // Verify that all reads came from write cache
+    SidecarCachingInputStream cis = (SidecarCachingInputStream) is.getWrappedStream();
+    long fromCache = cis.getReadFromDataCache();
+    long fromRemoteFS = cis.getReadFromRemoteFS();
+    long fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from data write cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(0, (int) fromCache);
+    assertEquals(bbuf.length, (int) fromWriteCache);
+    
+    Cache dataCache = SidecarCachingFileSystem.getDataCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
+    
+    assertEquals(1, metaCache.activeSize());
+    long dataCacheSize = dataCache.getStorageUsed();
+    
+    sidecar.shutdown();
+    // shutdown FS
+    FileSystem.closeAll();
+    
+    try {
+      this.fs = cachingFileSystem();
+    } catch (Exception e) {
+      LOG.error("setUp", e);
+      fail();
+    } 
+    is = fs.open(p);
+    // Read data - fill the data page cache
+    is.read(bbuf, 0, bbuf.length);
+    // Verify that all reads came from write cache
+    cis = (SidecarCachingInputStream) is.getWrappedStream();
+    fromCache = cis.getReadFromDataCache();
+    fromRemoteFS = cis.getReadFromRemoteFS();
+    fromWriteCache = cis.getReadFromWriteCacheFS();
+    // ALL reads must come from data page cache
+    assertEquals(0, (int) fromRemoteFS);
+    assertEquals(bbuf.length, (int) fromCache);
+    assertEquals(0, (int) fromWriteCache);
+    
+    dataCache = SidecarCachingFileSystem.getDataCache();
+    metaCache = SidecarCachingFileSystem.getMetaCache();
+    
+    assertEquals(1, metaCache.activeSize());
+    assertEquals(dataCacheSize, dataCache.getStorageUsed());
   }
 }

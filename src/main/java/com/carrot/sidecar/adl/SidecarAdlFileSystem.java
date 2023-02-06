@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -25,6 +27,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * Sidecar caching FS for Azure Data Lake File System Gen 1
  * fs.adl.impl=com.carrot.sidecar.adl.SidecarAdlFileSystem
  */
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SidecarAdlFileSystem extends AdlFileSystem 
   implements MetaDataCacheable, RemoteFileSystemAccess{
   

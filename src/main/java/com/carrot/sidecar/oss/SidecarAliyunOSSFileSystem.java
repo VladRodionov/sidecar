@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -42,6 +44,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * Sidecar caching FS for some Chineese Aliyun OSS (Alibaba Cloud)
  * fs.oss.impl=com.carrot.sidecar.oss.SidecarAliyunOSSFileSystem
  */
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SidecarAliyunOSSFileSystem extends AliyunOSSFileSystem 
 implements MetaDataCacheable, RemoteFileSystemAccess {
 

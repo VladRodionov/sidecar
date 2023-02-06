@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -41,6 +43,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * Sidecar caching File System for Amazon s3 Object Store
  * fs.s3a.impl=com.carrot.sidecar.s3a.SidecarS3AFileSystem
  */
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SidecarS3AFileSystem extends S3AFileSystem 
   implements MetaDataCacheable, RemoteFileSystemAccess {
 

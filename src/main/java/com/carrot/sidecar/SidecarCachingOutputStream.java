@@ -88,9 +88,10 @@ implements Syncable, CanSetDropBehind, StreamCapabilities{
   /**
    * Get current length of the file
    * @return length
+   * @throws IOException 
    */
-  public long length() {
-    return length;
+  public long length() throws IOException {
+    return this.remoteOut.getPos();
   }
   
   /**

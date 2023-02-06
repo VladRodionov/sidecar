@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -37,7 +39,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * Sidecar caching file system for ABFS Azure Data Lake Gen 2
  * fs.abfs.impl=com.carrot.sidecar.abfs.SidecarAzureBlobFileSystem
  */
-
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem 
   implements MetaDataCacheable, RemoteFileSystemAccess {
 

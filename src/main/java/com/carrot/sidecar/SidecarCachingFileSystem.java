@@ -401,21 +401,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         // TODO Auto-generated catch block
         Thread.interrupted();
       }
-      LOG.info("Waiting for executor service, task queue length={}", taskQueue.size() );
+      LOG.info("Shutting down the executor service, task queue length={}", taskQueue.size() );
     }
   }
-  /**
-   * For testing only (not visible outside the package)
-   */
-  
-  boolean deleteFromWriteCache(Path remotePath) throws IOException
-  {
-    if (this.writeCacheFS == null) {
-      throw new IOException("Write caching FS is not available");
-    }
-    Path cachedPath = remoteToCachingPath(remotePath);
-    return this.writeCacheFS.delete(cachedPath, false);
-  }
+ 
   /**
    * Get write cache FS
    * @return write cache file system
@@ -433,6 +422,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private void loadWriteCacheFileListCache() throws IOException {
+    if (!this.writeCacheEnabled) {
+      LOG.info("Skipping write-cache-file-list loading, write cache is disabled");
+      return;
+    }
     CarrotConfig config = CarrotConfig.getInstance();
     String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
     String fileName = snapshotDir + File.separator + LRUCache.FILE_NAME;
@@ -611,6 +604,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private void checkEviction() {
     double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
     if (storageOccupied > writeCacheEvictionStartsAt) {
+      /*DEBUG*/ LOG.info("checkEviction storage={}", storageOccupied);
+
       Thread t = evictor.get();
       if (t != null && t.isAlive()) {
         return ; // eviction is in progress
@@ -833,10 +828,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   @Override
   public void closingRemote(SidecarCachingOutputStream stream) {
-    long length = stream.length();
-    
+        
     final Path path = this.remoteFS.makeQualified(stream.getRemotePath());
-    
+    long length = 0;
+    try {
+      length = stream.length();
+    } catch(IOException e) {
+      LOG.error("Remote stream getPos() failed {}", e.getMessage());
+    }
+    /*DEBUG*/ LOG.info("closing remote {} len={}", path, length);
+
     if (writeCacheEnabled) {
       // It is save to update meta first in the cache
       // because write cache has already file ready to read
@@ -903,7 +904,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Data cache eviction of pages procedure
    */
   
-  private void evictDataPages(Path path, FileStatus status) {
+  void evictDataPages(Path path, FileStatus status) {
     if (status == null) {
       LOG.debug("evictDataPages: file {} path is not in the meta cache", path);
       return;
@@ -911,9 +912,26 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     dataDeleteFile(path, status);
   }
   
-   
+  /**
+   * For testing only - not visible outside the package
+   * @param remotePath
+   * @return true on success, false - otherwise
+   * @throws IOException
+   */
+  boolean deleteFromWriteCache(Path remotePath) throws IOException {
+    if (this.writeCacheFS == null) {
+      return false;
+    }
+    metaDelete(remotePath);
+    Path p = remoteToCachingPath(remotePath);
+    writeCacheFileList.remove(p.toString());
+    return this.writeCacheFS.delete(p, false);
+  }
+  
+  
   private boolean isFile(Path p) throws IOException {
     boolean result;
+    //TODO: is this correct?
     if (metaExists(p)) {
       // we keep only files in meta
       return true;
@@ -1010,14 +1028,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   public void shutdown() throws IOException {
+    shutdown(true);
+  }
+  
+  public void shutdown(boolean dispose) throws IOException {
     boolean isPersistent = SidecarConfig.getInstance().isCachePersistent();
     if (isPersistent) {
       saveDataCache();
       saveMetaCache();
     }
     saveWriteCacheFileListCache();
-    dispose();
-    clearFSCache();
+    shutdownExecutorService();
+    if (dispose) {
+      dispose();
+      clearFSCache();
+    }
   }
   
   /**********************************************************************************

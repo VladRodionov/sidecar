@@ -13,7 +13,6 @@
  */
 package com.carrot.sidecar;
 
-import static com.google.common.base.Preconditions.checkState;
 import static java.nio.file.Files.createTempDirectory;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -110,10 +109,8 @@ public class TestSidecarCachingOutputStream {
   public void close() throws IOException {
     if (skipTests) return;
     SidecarCachingFileSystem.dispose();
-    checkState(cacheDirectory != null);
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
     LOG.info("Deleted {}", cacheDirectory);
-    checkState(writeCacheDirectory != null);
     TestUtils.deletePathRecursively(writeCacheDirectory.getPath());
     LOG.info("Deleted {}", writeCacheDirectory);
   }

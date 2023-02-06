@@ -17,10 +17,15 @@
  */
 package com.carrot.sidecar.wasb;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
+
 /**
  * Sidecar caching file system for secure WASB native Azure FS
  * fs.wasbs.impl=com.carrot.sidecar.wasb.SecureSidecarNativeAzureBlobFileSystem
  */
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SecureSidecarNativeAzureBlobFileSystem extends SidecarNativeAzureBlobFileSystem {
 
   @Override

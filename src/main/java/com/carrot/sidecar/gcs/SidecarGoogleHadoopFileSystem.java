@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -42,7 +44,8 @@ import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
  * Sidecar caching FS for Google Cloud Storage
  * fs.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFileSystem
  */
-
+@InterfaceAudience.Public
+@InterfaceStability.Evolving
 public class SidecarGoogleHadoopFileSystem extends GoogleHadoopFileSystem 
 implements MetaDataCacheable, RemoteFileSystemAccess {
   

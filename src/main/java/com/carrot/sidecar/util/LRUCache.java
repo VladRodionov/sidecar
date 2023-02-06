@@ -29,7 +29,7 @@ import java.util.Map;
 
 public class LRUCache<K, V> {
   public static String NAME = "lru-cache";
-  public static String FILE_NAME = "fifo.cache";
+  public static String FILE_NAME = "write-cache-file-list.cache";
   private static final int INIT_CAPACITY = 2000;
   private static final float INIT_LOAD_FACTOR = 0.75f;
   private static final boolean ACCESS_ORDERED = false;
