@@ -1,11 +1,7 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.oss;
+package com.carrot.sidecar.fs.abfs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -31,7 +27,7 @@ import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
-import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem;
+import org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
@@ -40,18 +36,17 @@ import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
- * 
- * Sidecar caching FS for some Chineese Aliyun OSS (Alibaba Cloud)
- * fs.oss.impl=com.carrot.sidecar.oss.SidecarAliyunOSSFileSystem
+ * Sidecar caching file system for ABFS Azure Data Lake Gen 2
+ * fs.abfs.impl=com.carrot.sidecar.abfs.SidecarAzureBlobFileSystem
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarAliyunOSSFileSystem extends AliyunOSSFileSystem 
-implements MetaDataCacheable, RemoteFileSystemAccess {
+public class SidecarAzureBlobFileSystem extends AzureBlobFileSystem 
+  implements MetaDataCacheable, RemoteFileSystemAccess {
 
   private SidecarCachingFileSystem sidecar;
   
-  public SidecarAliyunOSSFileSystem() {}
+  public SidecarAzureBlobFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
@@ -59,11 +54,7 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
     this.sidecar = SidecarCachingFileSystem.get(this);
     this.sidecar.initialize(name, originalConf);
   }
-  
-  /**
-   * FileSystem API
-   */
-  
+
   @Override
   public FileStatus getFileStatus(Path p) throws IOException {
     return sidecar.getFileStatus(p);
@@ -79,15 +70,13 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
       int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
     return sidecar.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
   }
-
-  @Override
-  public FSDataOutputStream createNonRecursive(Path path, FsPermission permission,
-      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
-      Progressable progress) throws IOException {
-    return sidecar.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize,
-      progress);
-  }
   
+  @Override
+  public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
+      throws IOException {
+    return sidecar.append(f, bufferSize, progress);
+  }
+
   @Override
   public boolean rename(Path src, Path dst) throws IOException {
     return sidecar.rename(src, dst);
@@ -110,9 +99,6 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
     sidecar.close();
   }
 
-  /**
-   * CachingFileSystem
-   */
   @Override
   public SidecarCachingFileSystem getCachingFileSystem() {
     return sidecar;
@@ -163,17 +149,11 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
       throws IOException, FileAlreadyExistsException {
     return super.mkdirs(path, permission);
   }
-
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
-  }
-  
-  @Override
-  public void concatRemote(Path trg, Path[] pathes) throws IOException {
-    super.concat(trg, pathes);
   }
   
   @Override

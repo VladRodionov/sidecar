@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.oss;
+package com.carrot.sidecar.fs.gcs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,24 +26,26 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
 
+import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
+
 /**
- * Sidecar - backed Aliyun OSS implementation of AbstractFileSystem.
- * This impl delegates to the SidecarAliyunOSSFileSystem. This is used 
+ * Sidecar - backed Google Cloud Storage implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarGoogleHadoopFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file systems
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.oss.impl=com.carrot.sidecar.oss.SidecarOSS
+ * fs.AbstractFileSystem.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFS
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarOSS extends DelegateToFileSystem{
+public class SidecarGoogleHadoopFS extends DelegateToFileSystem{
 
-  public SidecarOSS(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarAliyunOSSFileSystem(), conf, "oss", false);
+  public SidecarGoogleHadoopFS(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarGoogleHadoopFileSystem(), conf, GoogleCloudStorageFileSystem.SCHEME, false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return -1;
+    return -1; // ports are not used in GCS
   }
 }

@@ -15,21 +15,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.wasb;
+package com.carrot.sidecar.fs.swift;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.DelegateToFileSystem;
 
 /**
- * Sidecar caching file system for secure WASB native Azure FS
- * fs.wasbs.impl=com.carrot.sidecar.wasb.SecureSidecarNativeAzureBlobFileSystem
+ * Sidecar - backed OpenStack Swift implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarSwiftNativeFileSystem. This is used 
+ * from inside YARN containers to access Hadoop - compatible file systems
+ * 
+ * Hadoop configuration:
+ * fs.AbstractFileSystem.swift.impl=com.carrot.sidecar.swift.SidecarSwift
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SecureSidecarNativeAzureBlobFileSystem extends SidecarNativeAzureBlobFileSystem {
+public class SidecarSwift extends DelegateToFileSystem{
+
+  public SidecarSwift(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarSwiftNativeFileSystem(), conf, "swift", false);
+  }
 
   @Override
-  public String getScheme() {
-    return "wasbs";
+  public int getUriDefaultPort() {
+    return -1;
   }
 }

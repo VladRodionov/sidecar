@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.abfs;
+package com.carrot.sidecar.fs.abfs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,19 +28,19 @@ import org.apache.hadoop.fs.DelegateToFileSystem;
 import org.apache.hadoop.fs.azurebfs.constants.FileSystemUriSchemes;
 
 /**
- * Sidecar - backed Azure Blob File System implementation of AbstractFileSystem.
+ * Sidecar - backed Secure Azure Blob File System implementation of AbstractFileSystem.
  * This impl delegates to the SidecarAzureBlobFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file system
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.abfs.impl=com.carrot.sidecar.abfs.SidecarAbfs
+ * fs.AbstractFileSystem.abfss.impl=com.carrot.sidecar.abfs.SidecarAbfss
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarAbfs extends DelegateToFileSystem{
+public class SidecarAbfss extends DelegateToFileSystem{
 
-  public SidecarAbfs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarAzureBlobFileSystem(), conf, FileSystemUriSchemes.ABFS_SCHEME, false);
+  public SidecarAbfss(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SecureSidecarAzureBlobFileSystem(), conf, FileSystemUriSchemes.ABFS_SECURE_SCHEME, false);
   }
 
   @Override

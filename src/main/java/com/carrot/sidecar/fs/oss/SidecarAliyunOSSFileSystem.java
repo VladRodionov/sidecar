@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.gcs;
+package com.carrot.sidecar.fs.oss;
 
 import java.io.IOException;
 import java.net.URI;
@@ -31,27 +31,27 @@ import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
+import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
 import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
-import com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem;
 
 /**
  * 
- * Sidecar caching FS for Google Cloud Storage
- * fs.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFileSystem
+ * Sidecar caching FS for some Chineese Aliyun OSS (Alibaba Cloud)
+ * fs.oss.impl=com.carrot.sidecar.oss.SidecarAliyunOSSFileSystem
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarGoogleHadoopFileSystem extends GoogleHadoopFileSystem 
+public class SidecarAliyunOSSFileSystem extends AliyunOSSFileSystem 
 implements MetaDataCacheable, RemoteFileSystemAccess {
-  
+
   private SidecarCachingFileSystem sidecar;
   
-  public SidecarGoogleHadoopFileSystem() {}
+  public SidecarAliyunOSSFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
@@ -60,17 +60,13 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
     this.sidecar.initialize(name, originalConf);
   }
   
+  /**
+   * FileSystem API
+   */
+  
   @Override
   public FileStatus getFileStatus(Path p) throws IOException {
     return sidecar.getFileStatus(p);
-  }
-  
-  /**
-   * Google Cloud Storage Hadoop FS support file concatenation
-   */
-  @Override
-  public void concat(Path trg, Path[] srcs) throws IOException {
-    sidecar.concat(trg, srcs);
   }
   
   @Override
@@ -83,20 +79,15 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
       int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
     return sidecar.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
   }
-  
-  @Override
-  public FSDataOutputStream createNonRecursive(Path f, FsPermission permission,
-      boolean overwrite, int bufferSize, short replication, long blockSize,
-      Progressable progress) throws IOException {
-    return sidecar.createNonRecursive(f, permission, overwrite, bufferSize, replication, blockSize, progress);
-  }
-  
-  @Override
-  public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
-      throws IOException {
-    return sidecar.append(f, bufferSize, progress);
-  }
 
+  @Override
+  public FSDataOutputStream createNonRecursive(Path path, FsPermission permission,
+      EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
+      Progressable progress) throws IOException {
+    return sidecar.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize,
+      progress);
+  }
+  
   @Override
   public boolean rename(Path src, Path dst) throws IOException {
     return sidecar.rename(src, dst);
@@ -184,7 +175,7 @@ implements MetaDataCacheable, RemoteFileSystemAccess {
   public void concatRemote(Path trg, Path[] pathes) throws IOException {
     super.concat(trg, pathes);
   }
-
+  
   @Override
   public FileStatus getFileStatusRemote(Path p) throws IOException {
     return super.getFileStatus(p);

@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.swift;
+package com.carrot.sidecar.fs.s3a;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,25 +25,28 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
+import org.apache.hadoop.fs.s3a.Constants;
 
 /**
- * Sidecar - backed OpenStack Swift implementation of AbstractFileSystem.
- * This impl delegates to the SidecarSwiftNativeFileSystem. This is used 
- * from inside YARN containers to access Hadoop - compatible file systems
+ * Sidecar - backed S3A implementation of AbstractFileSystem.
+ * This implementation delegates to the SidecarS3AFileSystem. This is used 
+ * from inside YARN containers to access Hadoop - compatible file system
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.swift.impl=com.carrot.sidecar.swift.SidecarSwift
+ * 
+ * fs.AbstractFileSystem.s3a.impl=com.carrot.sidecar.s3a.SidecarS3A
+ * 
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarSwift extends DelegateToFileSystem{
+public class SidecarS3A extends DelegateToFileSystem {
 
-  public SidecarSwift(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarSwiftNativeFileSystem(), conf, "swift", false);
+  public SidecarS3A(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarS3AFileSystem(), conf, "s3a", false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return -1;
+    return Constants.S3A_DEFAULT_PORT;
   }
 }

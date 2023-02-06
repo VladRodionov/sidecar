@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.adl;
+package com.carrot.sidecar.fs.hdfs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,26 +25,32 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
-import org.apache.hadoop.fs.adl.AdlFileSystem;
+import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 
 /**
- * Sidecar - backed Azure  Data Lake File System (Gen 1) implementation of AbstractFileSystem.
- * This impl delegates to the SidecarAdlFileSystem. This is used 
- * from inside YARN containers to access Hadoop - compatible file system
+ * Sidecar - backed HDFS implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarDistributedFileSystem. This is used 
+ * from inside YARN containers to access Hadoop - compatible file systems
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.adl.impl=com.carrot.sidecar.adl.SidecarAdl
+ * fs.AbstractFileSystem.hdfs.impl=com.carrot.sidecar.hdfs.SidecarHdfs
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarAdl extends DelegateToFileSystem{
+public class SidecarHdfs extends DelegateToFileSystem{
 
-  public SidecarAdl(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarAdlFileSystem(), conf, AdlFileSystem.SCHEME, false);
+  static {
+    HdfsConfiguration.init();
+  }
+  
+  public SidecarHdfs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarDistributedFileSystem(), conf, HdfsConstants.HDFS_URI_SCHEME, false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return 443; // AdlFileSystem.DEFAULT_PORT - not visible
+    return HdfsClientConfigKeys.DFS_NAMENODE_RPC_PORT_DEFAULT;
   }
 }

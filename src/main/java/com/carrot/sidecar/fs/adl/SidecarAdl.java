@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.wasb;
+package com.carrot.sidecar.fs.adl;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,25 +25,26 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
+import org.apache.hadoop.fs.adl.AdlFileSystem;
 
 /**
- * Sidecar - backed Azure  Secure Native Blob Storage implementation of AbstractFileSystem.
- * This impl delegates to the SecureSidecarNativeAzureBlobFileSystem. This is used 
- * from inside YARN containers to access Hadoop - compatible file systems
+ * Sidecar - backed Azure  Data Lake File System (Gen 1) implementation of AbstractFileSystem.
+ * This impl delegates to the SidecarAdlFileSystem. This is used 
+ * from inside YARN containers to access Hadoop - compatible file system
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.wasbs.impl=com.carrot.sidecar.wasb.SidecarWasbs
+ * fs.AbstractFileSystem.adl.impl=com.carrot.sidecar.adl.SidecarAdl
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarWasbs extends DelegateToFileSystem{
+public class SidecarAdl extends DelegateToFileSystem{
 
-  public SidecarWasbs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SecureSidecarNativeAzureBlobFileSystem(), conf, "wasbs", false);
+  public SidecarAdl(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SidecarAdlFileSystem(), conf, AdlFileSystem.SCHEME, false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return -1;
+    return 443; // AdlFileSystem.DEFAULT_PORT - not visible
   }
 }

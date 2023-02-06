@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
+import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
 import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
@@ -160,7 +161,7 @@ public abstract class TestCachingFileSystemMultithreadedBase {
   
   protected FileSystem cachingFileSystem() throws IOException {
     Configuration conf = getConfiguration();
-    conf.set("fs.file.impl", SidecarTestFileSystem.class.getName());
+    conf.set("fs.file.impl", FileSidecarCachingFileSystem.class.getName());
     conf.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_MODE_KEY, WriteCacheMode.ASYNC.getMode());
     conf.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheMaxSize));
@@ -179,7 +180,7 @@ public abstract class TestCachingFileSystemMultithreadedBase {
     
     FileSystem fs = FileSystem.get(extDirectory, conf);
     // Set meta caching enabled
-    SidecarCachingFileSystem cfs = ((SidecarTestFileSystem) fs).getCachingFileSystem();
+    SidecarCachingFileSystem cfs = ((FileSidecarCachingFileSystem) fs).getCachingFileSystem();
     cfs.setMetaCacheEnabled(true);
     return fs;
   }

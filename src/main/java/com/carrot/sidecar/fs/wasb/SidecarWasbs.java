@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.gcs;
+package com.carrot.sidecar.fs.wasb;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,26 +26,24 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DelegateToFileSystem;
 
-import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
-
 /**
- * Sidecar - backed Google Cloud Storage implementation of AbstractFileSystem.
- * This impl delegates to the SidecarGoogleHadoopFileSystem. This is used 
+ * Sidecar - backed Azure  Secure Native Blob Storage implementation of AbstractFileSystem.
+ * This impl delegates to the SecureSidecarNativeAzureBlobFileSystem. This is used 
  * from inside YARN containers to access Hadoop - compatible file systems
  * 
  * Hadoop configuration:
- * fs.AbstractFileSystem.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFS
+ * fs.AbstractFileSystem.wasbs.impl=com.carrot.sidecar.wasb.SidecarWasbs
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarGoogleHadoopFS extends DelegateToFileSystem{
+public class SidecarWasbs extends DelegateToFileSystem{
 
-  public SidecarGoogleHadoopFS(URI theUri, Configuration conf) throws IOException, URISyntaxException {
-    super(theUri, new SidecarGoogleHadoopFileSystem(), conf, GoogleCloudStorageFileSystem.SCHEME, false);
+  public SidecarWasbs(URI theUri, Configuration conf) throws IOException, URISyntaxException {
+    super(theUri, new SecureSidecarNativeAzureBlobFileSystem(), conf, "wasbs", false);
   }
 
   @Override
   public int getUriDefaultPort() {
-    return -1; // ports are not used in GCS
+    return -1;
   }
 }

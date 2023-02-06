@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
+import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
 import com.carrot.sidecar.util.CacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
@@ -138,7 +139,7 @@ public class TestSidecarCachingOutputStream {
     
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     
-    configuration.set("fs.file.impl", SidecarTestFileSystem.class.getName());
+    configuration.set("fs.file.impl", FileSidecarCachingFileSystem.class.getName());
     configuration.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
     //configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.TRUE.toString());
     configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheSize));

@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.swift;
+package com.carrot.sidecar.fs.hdfs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -29,11 +29,10 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.fs.swift.snative.SwiftNativeFileSystem;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.util.Progressable;
 
 import com.carrot.sidecar.RemoteFileSystemAccess;
@@ -41,32 +40,25 @@ import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
- * Implementation of {@link FileSystem} for <a href="https://www.openstack.org">
- * Swift Object Store</a>, used to access Swift system in a file-system style.
- * 
- * fs.swift.impl=com.carrot.sidecar.swift.SidecarSwiftNativeFileSystem
-
+ * Sidecar caching File System for Hadoop HDFS
+ * fs.hdfs.impl=com.carrot.sidecar.hdfs.SidecarDistributedFileSystem
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem 
-  implements MetaDataCacheable, RemoteFileSystemAccess
-{
+public class SidecarDistributedFileSystem extends DistributedFileSystem implements 
+  MetaDataCacheable, RemoteFileSystemAccess {
   private SidecarCachingFileSystem sidecar;
   
-  public SidecarSwiftNativeFileSystem() {}
+  public SidecarDistributedFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);
     this.sidecar = SidecarCachingFileSystem.get(this);
+    //Can we use single instance per process?
     this.sidecar.initialize(name, originalConf);
   }
-  
-  /**
-   * File System API
-   */
-  
+
   @Override
   public FileStatus getFileStatus(Path p) throws IOException {
     return sidecar.getFileStatus(p);
@@ -90,12 +82,22 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
     return sidecar.createNonRecursive(path, permission, flags, bufferSize, replication, blockSize,
       progress);
   }
-  
+
+  @Override
+  public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
+      throws IOException {
+    return sidecar.append(f, bufferSize, progress);
+  }
+
   @Override
   public boolean rename(Path src, Path dst) throws IOException {
     return sidecar.rename(src, dst);
   }
 
+  @Override
+  public void rename(Path src, Path dst, Rename... options) throws IOException {
+    sidecar.rename(src, dst, options);
+  }
   @Override
   public boolean delete(Path f, boolean recursive) throws IOException {
     return sidecar.delete(f, recursive);
@@ -113,13 +115,11 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
     sidecar.close();
   }
 
-  /**
-   * CachingFileSystem
-   */
   @Override
   public SidecarCachingFileSystem getCachingFileSystem() {
     return sidecar;
   }
+  
   @Override
   public FSDataInputStream openRemote(Path f, int bufferSize) throws IOException {
     return super.open(f, bufferSize);
@@ -150,7 +150,6 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
     return super.rename(src, dst);
   }
   
-  @SuppressWarnings("deprecation")
   @Override
   public void renameRemote(Path src, Path dst, Rename... options) throws IOException {
     super.rename(src, dst, options);
@@ -166,17 +165,12 @@ public class SidecarSwiftNativeFileSystem extends SwiftNativeFileSystem
       throws IOException, FileAlreadyExistsException {
     return super.mkdirs(path, permission);
   }
-
+  
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
       throws IOException {
     return super.createNonRecursive(path, overwrite, bufferSize, replication, blockSize, progress);
-  }
-  
-  @Override
-  public void concatRemote(Path trg, Path[] pathes) throws IOException {
-    super.concat(trg, pathes);
   }
   
   @Override
