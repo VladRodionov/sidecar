@@ -365,9 +365,6 @@ public class SidecarCachingInputStream extends InputStream
     if (end < position + len) {
       end += Math.min(this.pageSize, this.fileLength - end);
     }
-    if (end < start) {
-    /*DEBUG*/  LOG.info("end {} < start {}", end, start);
-    }
     return new Range(start, end - start);
   }
   
@@ -384,9 +381,6 @@ public class SidecarCachingInputStream extends InputStream
     long start = r.start / this.pageSize * this.pageSize;
     if (start + n * this.pageSize < r.start + r.size) {
       n++;
-    }
-    if (n < 0) {
-     /*DEBUG*/ LOG.info("negative array size {}", n);
     }
     boolean[] res = new boolean[n];
     long pos = r.start;
@@ -914,9 +908,7 @@ public class SidecarCachingInputStream extends InputStream
     if (this.closed) {
       throw new IOException("Cannot read from a closed stream");
     }
-
     int bytesRead = positionedRead(position, buffer, offset, length);
-    
     return bytesRead;
   }
 

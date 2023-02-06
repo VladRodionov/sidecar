@@ -604,8 +604,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private void checkEviction() {
     double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
     if (storageOccupied > writeCacheEvictionStartsAt) {
-      /*DEBUG*/ LOG.info("checkEviction storage={}", storageOccupied);
-
+      LOG.debug("checkEviction storage={}", storageOccupied);
       Thread t = evictor.get();
       if (t != null && t.isAlive()) {
         return ; // eviction is in progress
@@ -836,7 +835,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     } catch(IOException e) {
       LOG.error("Remote stream getPos() failed {}", e.getMessage());
     }
-    /*DEBUG*/ LOG.info("closing remote {} len={}", path, length);
+    LOG.debug("Closing remote {} len={}", path, length);
 
     if (writeCacheEnabled) {
       // It is save to update meta first in the cache
