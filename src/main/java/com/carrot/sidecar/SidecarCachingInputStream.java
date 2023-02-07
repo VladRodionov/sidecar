@@ -108,7 +108,7 @@ public class SidecarCachingInputStream extends InputStream
   private long position = 0;
   
   /** Closed flag */
-  private boolean closed = false;
+  private volatile boolean closed = false;
   
   /** End of file reached */
   private boolean EOF = false;
@@ -687,18 +687,24 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public void close() throws IOException {
 
-    // Do not cache SCFS if they closed
-    // BUG
+    // Do not throw exception
     if (closed) {
-      throw new IOException("Cannot close a closed stream");
+      LOG.error("Cannot close a closed stream, file={}", path);
+      return;
     }
-    getRemoteStream().close();
+    try {
+      getRemoteStream().close();
+    } catch (IOException e) {
+      LOG.error("Remote file {}", path);
+      LOG.error("Remote input stream close failed", e);
+    }
     FSDataInputStream cached = getCacheStream();
     if (cached != null) {
       try {
         cached.close();
       } catch (IOException e) {
-        LOG.error("Cached input stream close", e);
+        LOG.error("Remote file {}", path);
+        LOG.error("Write cache input stream close failed", e);
       }
     }
     closed = true;
