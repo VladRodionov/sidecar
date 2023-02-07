@@ -70,7 +70,7 @@ import com.carrot.cache.io.BlockMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.CachedFileStatus;
 import com.carrot.sidecar.util.LRUCache;
 import com.carrot.sidecar.util.SidecarConfig;
@@ -88,7 +88,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Data cache type (offheap, file, hybrid)
    */
   
-  private static CacheType dataCacheType; 
+  private static SidecarCacheType dataCacheType; 
   /*
    *  Caches remote file lengths by file path
    */
@@ -221,10 +221,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     this.metaCacheable = fs instanceof MetaDataCacheable;
   }
 
-  private void setDataCacheType(CarrotConfig config, CacheType type) {
-    if (type == CacheType.HYBRID) {
-      addCacheType(config, CacheType.OFFHEAP.getCacheName(), CacheType.OFFHEAP.getType());
-      addCacheType(config, CacheType.FILE.getCacheName(), CacheType.FILE.getType());
+  private void setDataCacheType(CarrotConfig config, SidecarCacheType type) {
+    if (type == SidecarCacheType.HYBRID) {
+      addCacheType(config, SidecarCacheType.OFFHEAP.getCacheName(), SidecarCacheType.OFFHEAP.getType());
+      addCacheType(config, SidecarCacheType.FILE.getCacheName(), SidecarCacheType.FILE.getType());
     } else {
       addCacheType(config, type.getCacheName(), type.getType());
     }
@@ -255,7 +255,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Used for testing
    * @param b
    */
-  void setMetaCacheEnabled(boolean b) {
+  public void setMetaCacheEnabled(boolean b) {
     this.metaCacheable = b;
   }
   
@@ -263,7 +263,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Is meta cache enabled
    * @return true or false
    */
-  boolean isMetaCacheEnabled() {
+  public boolean isMetaCacheEnabled() {
     return this.metaCacheable;
   }
   
@@ -271,7 +271,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Set enable/disable write cache (Eviction thread can temporarily disable write cache)
    * @param b true or false
    */
-  void setWriteCacheEnabled(boolean b) {
+  public void setWriteCacheEnabled(boolean b) {
     if (this.writeCacheFS == null) {
       return;
     }
@@ -282,7 +282,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Is write cache enabled
    * @return 
    */
-  boolean isWriteCacheEnabled() {
+  public boolean isWriteCacheEnabled() {
     return this.writeCacheEnabled;
   }
   
@@ -479,7 +479,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }  
   }
 
-  private Cache loadDataCache(CacheType type) throws IOException {
+  private Cache loadDataCache(SidecarCacheType type) throws IOException {
     CarrotConfig config = CarrotConfig.getInstance();
     boolean isPersistent = SidecarConfig.getInstance().isCachePersistent();
     Cache dataCache = null;
@@ -513,12 +513,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private Cache loadDataCache() throws IOException {
-    if (dataCacheType != CacheType.HYBRID) {
+    if (dataCacheType != SidecarCacheType.HYBRID) {
       dataCache = loadDataCache(dataCacheType);
       return dataCache;
     } else {
-      dataCache = loadDataCache(CacheType.OFFHEAP);
-      Cache victimCache = loadDataCache(CacheType.FILE);
+      dataCache = loadDataCache(SidecarCacheType.OFFHEAP);
+      Cache victimCache = loadDataCache(SidecarCacheType.FILE);
       dataCache.setVictimCache(victimCache);
       return dataCache;
     }
@@ -1190,7 +1190,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Create dir: {}", path);
     boolean result = ((RemoteFileSystemAccess)remoteFS).mkdirsRemote(path, permission);
     if (result && this.writeCacheFS != null) {
-      this.writeCacheFS.mkdirs(path); // we use default permission
+      Path cachedPath = remoteToCachingPath(path);
+      this.writeCacheFS.mkdirs(cachedPath); // we use default permission
     }
     return result;
   }

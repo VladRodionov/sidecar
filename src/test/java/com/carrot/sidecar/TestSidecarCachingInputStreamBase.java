@@ -49,7 +49,7 @@ import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Epoch;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 
@@ -94,7 +94,7 @@ public class TestSidecarCachingInputStreamBase {
       
   protected int scavThreads = 1;
   
-  protected CacheType cacheType = CacheType.OFFHEAP;
+  protected SidecarCacheType cacheType = SidecarCacheType.OFFHEAP;
     
   protected boolean aqEnabledFile = true;
   
@@ -171,7 +171,7 @@ public class TestSidecarCachingInputStreamBase {
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(CacheType.FILE)
+      .setDataCacheType(SidecarCacheType.FILE)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
@@ -210,7 +210,7 @@ public class TestSidecarCachingInputStreamBase {
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(CacheType.OFFHEAP)
+      .setDataCacheType(SidecarCacheType.OFFHEAP)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

@@ -41,7 +41,7 @@ import com.carrot.cache.io.BaseDataWriter;
 import com.carrot.cache.io.BaseFileDataReader;
 import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 import org.slf4j.Logger;
@@ -143,18 +143,18 @@ public class TestUtils {
     config.setStartIndexNumberOfSlotsPower(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, 4);
     config.setStartIndexNumberOfSlotsPower(SidecarConfig.META_CACHE_NAME, 4);
     SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
-    CacheType cacheType = sconfig.getDataCacheType();
+    SidecarCacheType cacheType = sconfig.getDataCacheType();
     return createCache(config, cacheType);
   }
   
-  private static Cache createCache(CarrotConfig config, CacheType cacheType) throws IOException {
+  private static Cache createCache(CarrotConfig config, SidecarCacheType cacheType) throws IOException {
     switch (cacheType) {
       case FILE: 
       case OFFHEAP:
         return new Cache(cacheType.getCacheName(), config);
       case HYBRID:
-        Cache parent = new Cache(CacheType.OFFHEAP.getCacheName(), config);
-        Cache victim = new Cache(CacheType.FILE.getCacheName(), config);
+        Cache parent = new Cache(SidecarCacheType.OFFHEAP.getCacheName(), config);
+        Cache victim = new Cache(SidecarCacheType.FILE.getCacheName(), config);
         parent.setVictimCache(victim);
         return parent;
     }
@@ -175,9 +175,9 @@ public class TestUtils {
     
     String[] newTypes = new String[types.length + 3];
     System.arraycopy(types, 0, newTypes, 0, types.length);
-    newTypes[newTypes.length - 3] = CacheType.FILE.getType();
-    newTypes[newTypes.length - 2] = CacheType.OFFHEAP.getType();
-    newTypes[newTypes.length - 1] = CacheType.OFFHEAP.getType();;
+    newTypes[newTypes.length - 3] = SidecarCacheType.FILE.getType();
+    newTypes[newTypes.length - 2] = SidecarCacheType.OFFHEAP.getType();
+    newTypes[newTypes.length - 1] = SidecarCacheType.OFFHEAP.getType();;
     
     
     String cacheNames = com.carrot.sidecar.util.Utils.join(newNames, ",");

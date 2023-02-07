@@ -23,13 +23,13 @@ import com.carrot.cache.controllers.AQBasedAdmissionController;
 import com.carrot.cache.controllers.MinAliveRecyclingSelector;
 import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 public class TestCachingFileSystemMultithreadedFile  extends TestCachingFileSystemMultithreadedBase{
 
   
-  protected CacheType cacheType = CacheType.FILE;
+  protected SidecarCacheType cacheType = SidecarCacheType.FILE;
 
   @Override
   protected Configuration getConfiguration() {
@@ -37,7 +37,7 @@ public class TestCachingFileSystemMultithreadedFile  extends TestCachingFileSyst
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(CacheType.FILE)
+      .setDataCacheType(SidecarCacheType.FILE)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

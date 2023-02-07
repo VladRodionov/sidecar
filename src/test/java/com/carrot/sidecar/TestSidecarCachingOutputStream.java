@@ -42,7 +42,7 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 public class TestSidecarCachingOutputStream {
@@ -123,7 +123,7 @@ public class TestSidecarCachingOutputStream {
     cacheConfig.setJMXMetricsEnabled(false);
     cacheConfig.setWriteCacheMode(useWriteCache? WriteCacheMode.ASYNC: WriteCacheMode.DISABLED);
     cacheConfig.setTestMode(true); // do not install shutdown hooks
-    cacheConfig.setDataCacheType(CacheType.FILE);
+    cacheConfig.setDataCacheType(SidecarCacheType.FILE);
     if (useWriteCache) {
       cacheConfig.setWriteCacheSizePerInstance(writeCacheSize);
       cacheConfig.setWriteCacheURI(writeCacheDirectory);

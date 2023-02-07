@@ -15,14 +15,14 @@ package com.carrot.sidecar;
 
 import java.io.IOException;
 
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 
 public class TestSidecarCachingInputStreamHybrid extends TestSidecarCachingInputStreamBase {
 
   @Override 
   public void setup() throws IOException {
     super.setup();
-    this.cacheType = CacheType.HYBRID;
+    this.cacheType = SidecarCacheType.HYBRID;
     this.fileCacheSize = 4 * (1L << 30);
     this.offheapCacheSize = 1 * (1L << 30);
   }

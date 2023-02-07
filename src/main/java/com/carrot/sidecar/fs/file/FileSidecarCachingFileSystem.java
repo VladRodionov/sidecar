@@ -33,6 +33,7 @@ import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
 
+import com.carrot.sidecar.MetaDataCacheable;
 import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
@@ -44,7 +45,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * fs.file.impl=com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem
  *
  */
-public class FileSidecarCachingFileSystem extends LocalFileSystem implements RemoteFileSystemAccess{
+public class FileSidecarCachingFileSystem extends LocalFileSystem 
+  implements MetaDataCacheable, RemoteFileSystemAccess{
   
   private SidecarCachingFileSystem sidecar;
 

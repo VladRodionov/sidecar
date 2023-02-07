@@ -686,6 +686,9 @@ public class SidecarCachingInputStream extends InputStream
 
   @Override
   public void close() throws IOException {
+
+    // Do not cache SCFS if they closed
+    // BUG
     if (closed) {
       throw new IOException("Cannot close a closed stream");
     }

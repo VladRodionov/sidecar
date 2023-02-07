@@ -23,13 +23,13 @@ import com.carrot.cache.controllers.AQBasedAdmissionController;
 import com.carrot.cache.controllers.MinAliveRecyclingSelector;
 import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 public class TestCachingFileSystemOffheap  extends TestCachingFileSystemBase{
 
   
-  protected CacheType cacheType = CacheType.OFFHEAP;
+  protected SidecarCacheType cacheType = SidecarCacheType.OFFHEAP;
 
   @Override
   protected Configuration getConfiguration() {
@@ -37,7 +37,7 @@ public class TestCachingFileSystemOffheap  extends TestCachingFileSystemBase{
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(CacheType.OFFHEAP)
+      .setDataCacheType(SidecarCacheType.OFFHEAP)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

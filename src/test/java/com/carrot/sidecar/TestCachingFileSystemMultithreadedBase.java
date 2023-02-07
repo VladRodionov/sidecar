@@ -46,7 +46,7 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
-import com.carrot.sidecar.util.CacheType;
+import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.util.SidecarConfig;
 
 /**
@@ -65,7 +65,7 @@ public abstract class TestCachingFileSystemMultithreadedBase {
   
   protected URI writeCacheDirectory;  
   
-  protected CacheType cacheType = CacheType.OFFHEAP;
+  protected SidecarCacheType cacheType = SidecarCacheType.OFFHEAP;
   
   /**
    * Subclasses can override
