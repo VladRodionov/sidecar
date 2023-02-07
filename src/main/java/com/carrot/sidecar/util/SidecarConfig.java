@@ -101,7 +101,7 @@ public class SidecarConfig extends Properties {
   
   public final static boolean DEFAULT_SIDECAR_JMX_METRICS_ENABLED = true;
   
-  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "com.sidecar.metrics";
+  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "com.carrot.sidecar";
   
   public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
   
