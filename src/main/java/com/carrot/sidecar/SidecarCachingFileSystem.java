@@ -1138,10 +1138,15 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     Callable<FSDataInputStream> remoteCall = () -> {
       return ((RemoteFileSystemAccess)remoteFS).openRemote(qPath, bufferSize);
     };
-    Path writeCachePath = remoteToCachingPath(path);
-    Callable<FSDataInputStream> cacheCall = () -> {
-      return writeCacheFS == null? null: writeCacheFS.open(writeCachePath, bufferSize);
-    };
+    
+    Callable<FSDataInputStream> cacheCall = () -> {return null;};
+    
+    if (writeCacheEnabled) {
+      Path writeCachePath = remoteToCachingPath(path);
+      cacheCall = () -> {
+        return writeCacheFS.open(writeCachePath, bufferSize);
+      };
+    }
     FileStatus status = getFileStatus(qPath);
     FSDataInputStream cachingInputStream =
         new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
