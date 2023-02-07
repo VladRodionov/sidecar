@@ -83,6 +83,8 @@ public class SidecarConfig extends Properties {
   
   public final static String SIDECAR_WRITE_CACHE_MODE_KEY = "sidecar.write.cache.mode";
   
+  public final static String SIDECAR_INSTALL_SHUTDOWN_HOOK_KEY = "sidecar.install.shutdown.hook";
+  
   /**
    * Remote files mutable? In general? Mutability means, file content 
    * can be changed after creation (append or full rewrite)
@@ -112,6 +114,8 @@ public class SidecarConfig extends Properties {
   public final static int DEFAULT_SIDECAR_THREAD_POOL_MAX_SIZE = 8;
   
   public final static boolean DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE = true;
+  
+  public final static boolean DEFAULT_SIDECAR_INSTALL_SHUTDOWN_HOOK = false;
   
   
   private static SidecarConfig instance;
@@ -481,6 +485,32 @@ public class SidecarConfig extends Properties {
       return Boolean.parseBoolean(value);
     }
     return DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE;
- 
   }
+  
+  /**
+   * Does Sidecar FS install shutdown hook
+   * @return if not test mode - true, otherwise depends
+   */
+  public boolean doInstallShutdownHook() {
+    if (isTestMode()) {
+      String value = getProperty(SIDECAR_INSTALL_SHUTDOWN_HOOK_KEY);
+      if (value != null) {
+        return Boolean.parseBoolean(value);
+      }
+      return DEFAULT_SIDECAR_INSTALL_SHUTDOWN_HOOK;
+    } else {
+      return true;
+    }
+  }
+  
+  /**
+   * Set install shutdown hook
+   * @param b value
+   * @return self
+   */
+  public SidecarConfig setInstallShutdownHook(boolean b) {
+    setProperty(SIDECAR_INSTALL_SHUTDOWN_HOOK_KEY, Boolean.toString(b));
+    return this;
+  }
+  
 }

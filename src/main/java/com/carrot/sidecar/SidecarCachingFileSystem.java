@@ -349,8 +349,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         loadMetaCache();
         loadWriteCacheFileListCache();
 
-        if (!sconfig.isTestMode()) {
-          // Install shutdown hook if not in a test mode
+        if (sconfig.doInstallShutdownHook()) {
+          // Install shutdown hook if not in a test mode or
+          // in test mode with additional config set
           Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
               if (sconfig.isCachePersistent()) {
