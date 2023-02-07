@@ -357,18 +357,20 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
               if (sconfig.isCachePersistent()) {
                 saveDataCache();
                 saveMetaCache();
-                LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
-                LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
               }
               // we save write cache file list even if persistence == false
               saveWriteCacheFileListCache();
               shutdownExecutorService();
               //TODO: shutdown thread pool
-              LOG.info("Shutdown hook installed for cache[lru-cache]");
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
             }
           }));
+          if (sconfig.isCachePersistent()) {
+            LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
+            LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
+          }
+          LOG.info("Shutdown hook installed for cache[lru-cache]");
         }
       }
       this.inited = true;
