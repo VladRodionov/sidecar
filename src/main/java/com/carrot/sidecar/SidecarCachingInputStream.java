@@ -42,7 +42,25 @@ import com.carrot.cache.io.ObjectPool;
 @NotThreadSafe
 public class SidecarCachingInputStream extends InputStream 
   implements Seekable, PositionedReadable, ByteBufferReadable{
-
+  
+  /**
+   * Convenient class to keep file segment range
+   */
+  static class Range {
+    private long start;
+    private long size;
+    Range (long start, long size){
+      this.start = start;
+      this.size = size;
+    }
+    long getStart() {
+      return this.start;
+    }
+    long size() {
+      return this.size;
+    }
+  }
+  
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingInputStream.class);
 
   /* Pool which keeps I/O buffers to read from cache directly */
@@ -65,7 +83,7 @@ public class SidecarCachingInputStream extends InputStream
    */
   private Path path;
   
-  /** The length of the external file*/
+  /** The length of the remote file */
   private long fileLength;
   
   /** Key base for all data pages in this external file*/
@@ -105,13 +123,15 @@ public class SidecarCachingInputStream extends InputStream
   private long bufferEndOffset;
  
   /** Current position of the stream, relative to the start of the file. */
-  private long position = 0;
+  private volatile long position = 0;
   
   /** Closed flag */
   private volatile boolean closed = false;
   
   /** End of file reached */
-  private boolean EOF = false;
+  private volatile boolean EOF = false;
+  
+  /** Input stream statistics section */
   
   private long hits = 0;
   
@@ -122,8 +142,9 @@ public class SidecarCachingInputStream extends InputStream
   private long bytesReadFromWriteCache = 0;
   
   private long bytesReadFromDataCache = 0;
-  
-  
+    
+  private byte[] one = new byte[1];
+
   /**
    * Constructor 
    * @param cache parent cache
@@ -174,7 +195,7 @@ public class SidecarCachingInputStream extends InputStream
   
   /**
    * Get file path
-   * @return
+   * @return file path
    */
   public Path getFilePath() {
     return this.path;
@@ -187,15 +208,7 @@ public class SidecarCachingInputStream extends InputStream
   public double getHitRate() {
     return (double) (this.hits  - this.bhits)/ this.gets;
   }
-  
-  private byte[] getPageBuffer() {
-    byte[] buffer = pagePool.poll();
-    if (buffer == null) {
-      buffer = new byte[pageSize];
-    }
-    return buffer;
-  }
-  
+    
   /**
    * Total number read from Remote FS
    * @return number of bytes
@@ -225,6 +238,10 @@ public class SidecarCachingInputStream extends InputStream
     this.bytesReadFromWriteCache = 0;
   }
   
+  /**
+   * Get I/O buffer from the pool
+   * @return buffer
+   */
   private byte[] getIOBuffer() {
     if (bufferSize > 0) {
       byte[] buffer = ioPool.poll();
@@ -236,15 +253,200 @@ public class SidecarCachingInputStream extends InputStream
     return null;
   }
   
-  
+  /** 
+   * Get page buffer from the pool
+   * @return buffer
+   */
+  private byte[] getPageBuffer() {
+    byte[] buffer = pagePool.poll();
+    if (buffer == null) {
+      buffer = new byte[pageSize];
+    }
+    return buffer;
+  }
+
+  /**
+   * Public API section
+   */
   @Override
-  public int read(byte[] bytesBuffer, int offset, int length) throws IOException {
+  public synchronized int read(byte[] bytesBuffer, int offset, int length) throws IOException {
+    checkIfClosed();
     return readInternal(bytesBuffer, offset, length, position,
         false);
   }
 
-  public int read(ByteBuffer buffer, int offset, int length) throws IOException {
-    
+  @Override
+  public synchronized long skip(long n) throws IOException {
+    checkIfClosed();
+    if (n <= 0) {
+      return 0;
+    }
+    long toSkip = Math.min(remaining(), n);
+    position += toSkip;
+    getRemoteStream().skip(toSkip);
+    this.cacheStream = getCacheStream();
+    if (this.cacheStream != null) {
+      try {
+        this.cacheStream.skip(toSkip);
+      } catch(IOException e) {
+        //TODO: better handling exception
+        LOG.error("Cached input stream skip", e);
+        this.cacheStream = null;
+        this.cacheStreamCallable = null;
+      }
+    }
+    return toSkip;
+  }
+
+  @Override
+  public void close() throws IOException {
+
+    // Do not throw exception
+    if (closed) {
+      LOG.error("Cannot close a closed stream, file={}", path);
+      return;
+    }
+    try {
+      getRemoteStream().close();
+    } catch (IOException e) {
+      LOG.error("Remote file {}", path);
+      LOG.error("Remote input stream close failed", e);
+    }
+    FSDataInputStream cached = getCacheStream();
+    if (cached != null) {
+      try {
+        cached.close();
+      } catch (IOException e) {
+        LOG.error("Remote file {}", path);
+        LOG.error("Write cache input stream close failed", e);
+      }
+    }
+    closed = true;
+    // release buffers
+    if (buffer != null) {
+      ioPool.offer(buffer);
+    }
+    if (pageBuffer != null) {
+      pagePool.offer(pageBuffer);
+    }
+  }
+
+  @Override
+  public synchronized long getPos() {
+    return position;
+  }
+
+  @Override
+  public synchronized void seek(long pos) throws IOException {
+    checkIfClosed();
+    checkArgument(pos >= 0, "Seek position is negative: " + pos);
+    checkArgument(pos <= this.fileLength,
+            "Seek position " + pos + " exceeds the length of the file " + this.fileLength);
+    if (pos == this.position) {
+      return;
+    }
+    if (pos < this.position) {
+      EOF = false;
+    }
+    this.position = pos;
+    getRemoteStream().seek(pos);
+    this.cacheStream = getCacheStream();
+    if (this.cacheStream != null) {
+      try {
+        this.cacheStream.seek(pos);
+      } catch(IOException e) {
+        //TODO: better handling exception
+        LOG.error("Cached input stream seek", e);
+        this.cacheStream = null;
+        this.cacheStreamCallable = null;
+      }
+    }
+  }
+
+  @Override
+  public int available() throws IOException {
+    checkIfClosed();
+    return (int) remaining();
+  }
+
+  @Override
+  public synchronized int read() throws IOException {
+    checkIfClosed();
+    int n = read(one, 0, 1);
+    if (n == -1) {
+      return n;
+    }
+    return one[0] & 0xff;
+  }
+
+  @Override
+  public synchronized int read(byte[] buffer) throws IOException {
+    checkIfClosed();
+    return read(buffer, 0, buffer.length);
+  }
+
+  @Override
+  public synchronized int read(ByteBuffer buf) throws IOException {
+    checkIfClosed();
+    return read(buf, buf.position(), buf.remaining());    
+  }
+
+  @Override
+  public synchronized int read(long position, byte[] buffer, int offset, int length) throws IOException {
+    checkIfClosed();
+    return readInternal(buffer, offset, length,  position, true);    
+  }
+
+  @Override
+  public synchronized void readFully(long position, byte[] buffer) throws IOException {
+    checkIfClosed();
+    readFully(position, buffer, 0, buffer.length);
+  }
+
+  @Override
+  public synchronized void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    checkIfClosed();
+    int totalBytesRead = 0;
+    while (totalBytesRead < length) {
+      int bytesRead =
+          read(position + totalBytesRead, buffer, offset + totalBytesRead, length - totalBytesRead);
+      if (bytesRead == -1) {
+        LOG.error("file length={} position={} totalBytesRead={} to read={}", 
+          fileLength, position, totalBytesRead, length - totalBytesRead);
+        throw new EOFException();
+      }
+      totalBytesRead += bytesRead;
+    }
+  }
+
+  /**
+   * This method is not supported in {@link SidecarCachingInputStream}.
+   *
+   * @param targetPos N/A
+   * @return N/A
+   * @throws IOException always
+   */
+  @Override
+  public boolean seekToNewSource(long targetPos) throws IOException {
+    throw new IOException("This method is not supported.");
+  }
+  
+  /*** End of Public API **/
+  
+  
+  private long remaining() {
+    return EOF ? 0 : this.fileLength - position;
+  }
+  
+  /**
+   * TODO: this method is not a public API
+   * @param buffer
+   * @param offset
+   * @param length
+   * @return
+   * @throws IOException
+   */
+  private int read(ByteBuffer buffer, int offset, int length) throws IOException {
     if (buffer.hasArray()) {
       byte[] buf  = buffer.array();
       int totalBytesRead = readInternal(buf, offset, length, position, false);
@@ -336,21 +538,6 @@ public class SidecarCachingInputStream extends InputStream
       return bytesToReadInPage < 0? 0: bytesToReadInPage;
     }
     return 0;
-  }
-
-  static class Range {
-    private long start;
-    private long size;
-    Range (long start, long size){
-      this.start = start;
-      this.size = size;
-    }
-    long getStart() {
-      return this.start;
-    }
-    long size() {
-      return this.size;
-    }
   }
   
   /**
@@ -466,7 +653,7 @@ public class SidecarCachingInputStream extends InputStream
   
   private long dataPageGetRange(byte[] key, int rangeStart, int rangeSize, byte[] buffer, int bufferOffset) 
       throws IOException {
-    return cache.getRange(key, 0, key.length, rangeStart, rangeSize, true, buffer, bufferOffset);
+      return cache.getRange(key, 0, key.length, rangeStart, rangeSize, true, buffer, bufferOffset);
   }
   
   private boolean dataPageExists(byte[] key) {
@@ -661,101 +848,6 @@ public class SidecarCachingInputStream extends InputStream
     }
   }
   
-  @Override
-  public long skip(long n) throws IOException {
-    checkIfClosed();
-    if (n <= 0) {
-      return 0;
-    }
-    long toSkip = Math.min(remaining(), n);
-    position += toSkip;
-    getRemoteStream().skip(toSkip);
-    this.cacheStream = getCacheStream();
-    if (this.cacheStream != null) {
-      try {
-        this.cacheStream.skip(toSkip);
-      } catch(IOException e) {
-        //TODO: better handling exception
-        LOG.error("Cached input stream skip", e);
-        this.cacheStream = null;
-        this.cacheStreamCallable = null;
-      }
-    }
-    return toSkip;
-  }
-
-  @Override
-  public void close() throws IOException {
-
-    // Do not throw exception
-    if (closed) {
-      LOG.error("Cannot close a closed stream, file={}", path);
-      return;
-    }
-    try {
-      getRemoteStream().close();
-    } catch (IOException e) {
-      LOG.error("Remote file {}", path);
-      LOG.error("Remote input stream close failed", e);
-    }
-    FSDataInputStream cached = getCacheStream();
-    if (cached != null) {
-      try {
-        cached.close();
-      } catch (IOException e) {
-        LOG.error("Remote file {}", path);
-        LOG.error("Write cache input stream close failed", e);
-      }
-    }
-    closed = true;
-    // release buffers
-    if (buffer != null) {
-      ioPool.offer(buffer);
-    }
-    if (pageBuffer != null) {
-      pagePool.offer(pageBuffer);
-    }
-  }
-
-  public long remaining() {
-    return EOF ? 0 : this.fileLength - position;
-  }
-
-  public int positionedRead(long pos, byte[] b, int off, int len) throws IOException {
-    return readInternal(b, off, len,  pos, true);
-  }
-
-  @Override
-  public long getPos() {
-    return position;
-  }
-
-  @Override
-  public void seek(long pos) throws IOException {
-    checkIfClosed();
-    checkArgument(pos >= 0, "Seek position is negative: " + pos);
-    checkArgument(pos <= this.fileLength,
-            "Seek position " + pos + " exceeds the length of the file " + this.fileLength);
-    if (pos == this.position) {
-      return;
-    }
-    if (pos < this.position) {
-      EOF = false;
-    }
-    this.position = pos;
-    getRemoteStream().seek(pos);
-    this.cacheStream = getCacheStream();
-    if (this.cacheStream != null) {
-      try {
-        this.cacheStream.seek(pos);
-      } catch(IOException e) {
-        //TODO: better handling exception
-        LOG.error("Cached input stream seek", e);
-        this.cacheStream = null;
-        this.cacheStreamCallable = null;
-      }
-    }
-  }
 
   /**
    * Convenience method to ensure the stream is not closed.
@@ -764,7 +856,7 @@ public class SidecarCachingInputStream extends InputStream
     checkState(!closed, "Cannot operate on a closed stream");
   }
 
-  private synchronized int readExternalPage(long position)
+  private int readExternalPage(long position)
       throws IOException {
     long pageStart = position - (position % this.pageSize);
     int pageSize = (int) Math.min(this.pageSize, this.fileLength - pageStart);
@@ -874,83 +966,4 @@ public class SidecarCachingInputStream extends InputStream
     }
     return -1;
   }
-  
-  public int available() throws IOException {
-    if (this.closed) {
-      throw new IOException("Cannot query available bytes from a closed stream.");
-    }
-    return (int) remaining();
-  }
-
-  private byte[] one = new byte[1];
-
-  @Override
-  public int read() throws IOException {
-    if (this.closed) {
-      throw new IOException("Cannot read from a closed stream");
-    }
-
-    int n = read(one, 0, 1);
-    if (n == -1) {
-      return n;
-    }
-    return one[0] & 0xff;
-  }
-
-  @Override
-  public int read(byte[] buffer) throws IOException {
-    return read(buffer, 0, buffer.length);
-  }
-
-  @Override
-  public int read(ByteBuffer buf) throws IOException {
-    if (this.closed) {
-      throw new IOException("Cannot read from a closed stream");
-    }
-    int bytesRead = read(buf, buf.position(), buf.remaining());
-    
-    return bytesRead;
-  }
-
-  @Override
-  public int read(long position, byte[] buffer, int offset, int length) throws IOException {
-    if (this.closed) {
-      throw new IOException("Cannot read from a closed stream");
-    }
-    int bytesRead = positionedRead(position, buffer, offset, length);
-    return bytesRead;
-  }
-
-  @Override
-  public void readFully(long position, byte[] buffer) throws IOException {
-    readFully(position, buffer, 0, buffer.length);
-  }
-
-  @Override
-  public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
-    int totalBytesRead = 0;
-    while (totalBytesRead < length) {
-      int bytesRead =
-          read(position + totalBytesRead, buffer, offset + totalBytesRead, length - totalBytesRead);
-      if (bytesRead == -1) {
-        LOG.error("file length={} position={} totalBytesRead={} to read={}", 
-          fileLength, position, totalBytesRead, length - totalBytesRead);
-        throw new EOFException();
-      }
-      totalBytesRead += bytesRead;
-    }
-  }
-
-  /**
-   * This method is not supported in {@link SidecarCachingInputStream}.
-   *
-   * @param targetPos N/A
-   * @return N/A
-   * @throws IOException always
-   */
-  @Override
-  public boolean seekToNewSource(long targetPos) throws IOException {
-    throw new IOException("This method is not supported.");
-  }
-  
 }
