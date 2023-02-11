@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.Iterator;
@@ -43,6 +44,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
@@ -71,12 +75,243 @@ import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.util.SidecarCacheType;
+import com.carrot.sidecar.jmx.SidecarJMXSink;
+import com.carrot.sidecar.jmx.SidecarSiteJMXSink;
 import com.carrot.sidecar.util.CachedFileStatus;
 import com.carrot.sidecar.util.LRUCache;
 import com.carrot.sidecar.util.SidecarConfig;
 
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
+  
+  public static class Statistics {
+    
+    AtomicLong totalBytesRead = new AtomicLong();
+    
+    AtomicLong totalBytesReadRemote = new AtomicLong();
+    
+    AtomicLong totalBytesReadWriteCache = new AtomicLong();
+    
+    AtomicLong totalBytesReadDataCache = new AtomicLong();
+    
+    AtomicLong totalBytesReadPrefetch = new AtomicLong();
+    
+    AtomicLong totalReadRequests = new AtomicLong();
+    
+    AtomicLong totalReadRequestsFromWriteCache = new AtomicLong();
+    
+    AtomicLong totalReadRequestsFromDataCache = new AtomicLong();
+    
+    AtomicLong totalReadRequestsFromRemote = new AtomicLong();
+    
+    AtomicLong totalReadRequestsFromPrefetch = new AtomicLong();
+    
+    /**
+     * Add total bytes read
+     * @param n bytes
+     * @return new value
+     */
+    public long addTotalBytesRead(long n) {
+      return totalBytesRead.addAndGet(n);
+    }
+    
+    /**
+     * Get total bytes read
+     * @return total bytes read
+     */
+    public long getTotalBytesRead() {
+      return totalBytesRead.get();
+    }
+    
+    /**
+     * Add total bytes read from remote FS
+     * @param n bytes
+     * @return new value
+     */
+    public long addTotalBytesReadRemote(long n) {
+      return totalBytesReadRemote.addAndGet(n);
+    }
+    
+    /**
+     * Get total bytes read from remote FS
+     * @return total bytes read
+     */
+    public long getTotalBytesReadRemote() {
+      return totalBytesReadRemote.get();
+    }
+    
+    /**
+     * Add total bytes read from data cache
+     * @param n bytes
+     * @return new value
+     */
+    public long addTotalBytesReadDataCache(long n) {
+      return totalBytesReadDataCache.addAndGet(n);
+    }
+    
+    /**
+     * Get total bytes read from data cache
+     * @return total bytes read
+     */
+    public long getTotalBytesReadDataCache() {
+      return totalBytesReadDataCache.get();
+    }
+    
+    /**
+     * Add total bytes read from write cache
+     * @param n bytes
+     * @return new value
+     */
+    public long addTotalBytesReadWriteCache(long n) {
+      return totalBytesReadWriteCache.addAndGet(n);
+    }
+    
+    /**
+     * Get total bytes read from write cache
+     * @return total bytes read
+     */
+    public long getTotalBytesReadWriteCache() {
+      return totalBytesReadWriteCache.get();
+    }
+    
+    /**
+     * Add total bytes read from prefetch
+     * @param n bytes
+     * @return new value
+     */
+    public long addTotalBytesReadPrefetch(long n) {
+      return totalBytesReadPrefetch.addAndGet(n);
+    }
+    
+    /**
+     * Get total bytes read from prefetch
+     * @return total bytes read
+     */
+    public long getTotalBytesReadPrefetch() {
+      return totalBytesReadPrefetch.get();
+    }
+    
+    /**
+     * Add total read requests
+     * @param n number
+     * @return new value
+     */
+    public long addTotalReadRequests(long n) {
+      return totalReadRequests.addAndGet(n);
+    }
+    
+    /**
+     * Get total read requests
+     * @return total read requests
+     */
+    public long getTotalReadRequests() {
+      return totalReadRequests.get();
+    }
+    
+    /**
+     * Add total read requests from remote FS
+     * @param n number
+     * @return new value
+     */
+    public long addTotalReadRequestsFromRemote(long n) {
+      return totalReadRequestsFromRemote.addAndGet(n);
+    }
+    
+    /**
+     * Get total read requests from remote FS
+     * @return total read requests from remote FS
+     */
+    public long getTotalReadRequestsFromRemote() {
+      return totalReadRequestsFromRemote.get();
+    }
+    
+    /**
+     * Add total read requests from data cache
+     * @param n number
+     * @return new value
+     */
+    public long addTotalReadRequestsFromDataCache(long n) {
+      return totalReadRequestsFromDataCache.addAndGet(n);
+    }
+    
+    /**
+     * Get total read read requests from data cache
+     * @return total read requests from data cache
+     */
+    public long getTotalReadRequestsFromDataCache() {
+      return totalReadRequestsFromDataCache.get();
+    }
+    
+    /**
+     * Add total read requests from write cache
+     * @param n number
+     * @return new value
+     */
+    public long addTotalReadRequestsFromWriteCache(long n) {
+      return totalReadRequestsFromWriteCache.addAndGet(n);
+    }
+    
+    /**
+     * Get total read read requests from write cache
+     * @return total read requests from write cache
+     */
+    public long getTotalReadRequestsFromWriteCache() {
+      return totalReadRequestsFromWriteCache.get();
+    }
+    
+    /**
+     * Add total read requests from prefetch
+     * @param n number
+     * @return new value
+     */
+    public long addTotalReadRequestsFromPrefetch(long n) {
+      return totalReadRequestsFromPrefetch.addAndGet(n);
+    }
+    
+    /**
+     * Get total read read requests from prefetch
+     * @return total read requests from prefetch
+     */
+    public long getTotalReadRequestsFromPrefetch() {
+      return totalReadRequestsFromPrefetch.get();
+    }
+    /**
+     * Save statistics
+     * @param dos data output stream
+     * @throws IOException 
+     */
+    public void save(DataOutputStream dos) throws IOException {
+       dos.writeLong(totalBytesRead.get()); 
+       dos.writeLong(totalBytesReadRemote.get()); 
+       dos.writeLong(totalBytesReadWriteCache.get());
+       dos.writeLong(totalBytesReadDataCache.get());
+       dos.writeLong(totalBytesReadPrefetch.get());
+       
+       dos.writeLong(totalReadRequests.get()); 
+       dos.writeLong(totalReadRequestsFromWriteCache.get()); 
+       dos.writeLong(totalReadRequestsFromDataCache.get()); 
+       dos.writeLong(totalReadRequestsFromRemote.get()); 
+       dos.writeLong(totalReadRequestsFromPrefetch.get());
+    }
+    
+    /**
+     * Load statistics
+     * @param dis data input stream
+     * @throws IOException 
+     */
+    public void load(DataInputStream dis) throws IOException {
+      totalBytesRead.set(dis.readLong());
+      totalBytesReadRemote.set(dis.readLong());
+      totalBytesReadWriteCache.set(dis.readLong());
+      totalBytesReadDataCache.set(dis.readLong());
+      totalBytesReadPrefetch.set(dis.readLong());
+      totalReadRequests.set(dis.readLong());
+      totalReadRequestsFromWriteCache.set(dis.readLong());
+      totalReadRequestsFromDataCache.set(dis.readLong());
+      totalReadRequestsFromRemote.set(dis.readLong());
+      totalReadRequestsFromPrefetch.set(dis.readLong());
+    }
+  }
   
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);  
   /*
@@ -126,6 +361,26 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * find tasks and remove them
    */
   private static BlockingQueue<Runnable> taskQueue;
+  
+  /*
+   *  Write cache maximum size (per server instance)
+   */
+  static long writeCacheMaxSize;
+  
+  /*
+   *  Current write cache size 
+   */
+  static AtomicLong writeCacheSize = new AtomicLong();
+  
+  /*
+   * File eviction thread (from cache-on-write cache)
+   */
+  static AtomicReference<Thread> evictor = new AtomicReference<>();
+  
+  /**
+   * Write cache URI
+   */
+  static URI writeCacheURI;
   
   /*
    *  Data page size for data cache 
@@ -178,20 +433,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private boolean remoteMutable;
   
-  /*
-   *  Write cache maximum size (per server instance)
+  /**
+   * Remote FS URI
    */
-  static long writeCacheMaxSize;
+  private URI remoteURI;
   
-  /*
-   *  Current write cache size 
+  /**
+   * Statistics
    */
-  static AtomicLong writeCacheSize = new AtomicLong();
+  private Statistics stats;
   
-  /*
-   * File eviction thread (from cache-on-write cache)
-   */
-  static AtomicReference<Thread> evictor = new AtomicReference<>();
 
   public static SidecarCachingFileSystem get(FileSystem dataTier) throws IOException {
     checkJavaVersion();
@@ -216,6 +467,50 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
 
+  /**
+   * Get write cache maximum size
+   * @return size
+   */
+  public static long getWriteCacheMaxSize() {
+    return writeCacheMaxSize;
+  }
+  
+  /**
+   * Get current write cache size
+   * @return size
+   */
+  public static long getCurrentWriteCacheSize() {
+    return writeCacheSize.get();
+  }
+  
+  /**
+   * Get write cache URI
+   * @return write cache URI
+   */
+  public static URI getWriteCacheURI() {
+    return writeCacheURI;
+  }
+  
+  /**
+   * Get number of files in a write cache (per instance)
+   * @return number of files
+   */
+  public static long getNumberFilesInWriteCache() {
+    return writeCacheFileList.size();
+  }
+  
+  /**
+   * Pending tasks queue size
+   * @return size
+   */
+  public static int getTaskQueueSize() {
+    return taskQueue.size();
+  }
+  
+  /**
+   * Constructor
+   * @param fs remote FS
+   */
   private SidecarCachingFileSystem(FileSystem fs) {
     this.remoteFS = fs;
     this.metaCacheable = fs instanceof MetaDataCacheable;
@@ -286,11 +581,73 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return this.writeCacheEnabled;
   }
   
+  /**
+   * Get remote URI
+   * @return remote URI
+   */
+  public URI getURI() {
+    return this.remoteURI;
+  }
+  
+  /**
+   * Get remote FS URI
+   * @return remote URI
+   */
+  public URI getRemoteFSURI() {
+    return getURI();
+  }
+  
+  /**
+   * Get write cache FS URI
+   * @return write cache URI
+   */
+  public URI getWriteCacheFSFSURI() {
+    if (!writeCacheEnabled) {
+      return null;
+    }
+    return getWriteCacheFS().getUri();
+  }
+  
+  /**
+   * Data page size
+   * @return size
+   */
+  public int getDataPageSize() {
+    return this.dataPageSize;
+  }
+  
+  /**
+   *  Prefetch buffer size
+   * @return prefetch buffer size 
+   */
+  public int getPrefetchBufferSize() {
+    return this.ioBufferSize;
+  }
+  
+  /**
+   * Get write cache mode
+   * @return mode
+   */
+  public WriteCacheMode getWriteCacheMode() {
+    return this.writeCacheMode;
+  }
+  
+  /**
+   * Instance statistics
+   * @return 
+   */
+  public Statistics getStatistics() {
+    return this.stats;
+  }
+  
   public void initialize(URI uri, Configuration configuration) throws IOException {
     try {
       if (inited) {
         return;
       }
+      
+      this.remoteURI = uri;
+      
       CarrotConfig config = CarrotConfig.getInstance();
       Iterator<Map.Entry<String, String>> it = configuration.iterator();
       while (it.hasNext()) {
@@ -337,60 +694,99 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           LOG.error("Write cache location is not specified. Disable cache on write");
         }
       }
-      if (dataCache != null) {
-        return;
-      }
-      synchronized (getClass()) {
-        if (dataCache != null) {
-          return;
-        }
-        SidecarCachingInputStream.initIOPools(this.ioPoolSize);
-        loadDataCache();
-        loadMetaCache();
-        loadWriteCacheFileListCache();
 
-        if (sconfig.doInstallShutdownHook()) {
-          // Install shutdown hook if not in a test mode or
-          // in test mode with additional config set
-          Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-              if (sconfig.isCachePersistent()) {
-                saveDataCache();
-                saveMetaCache();
+      synchronized (getClass()) {
+        if (dataCache == null) {
+          writeCacheURI = sconfig.getWriteCacheURI();
+          SidecarCachingInputStream.initIOPools(this.ioPoolSize);
+          loadDataCache();
+          loadMetaCache();
+          if (sconfig.doInstallShutdownHook()) {
+            // Install shutdown hook if not in a test mode or
+            // in test mode with additional config set
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+              try {
+                if (sconfig.isCachePersistent()) {
+                  saveDataCache();
+                  saveMetaCache();
+                }
+                // we save write cache file list even if persistence == false
+                saveStatistics();
+                saveWriteCacheFileListCache();
+                shutdownExecutorService();
+                // TODO: shutdown thread pool
+              } catch (IOException e) {
+                LOG.error(e.getMessage(), e);
               }
-              // we save write cache file list even if persistence == false
-              saveWriteCacheFileListCache();
-              shutdownExecutorService();
-              //TODO: shutdown thread pool
-            } catch (IOException e) {
-              LOG.error(e.getMessage(), e);
+            }));
+            if (sconfig.isCachePersistent()) {
+              LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
+              LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
             }
-          }));
-          if (sconfig.isCachePersistent()) {
-            LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
-            LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
+            LOG.info("Shutdown hook installed for cache[lru-cache]");
           }
-          LOG.info("Shutdown hook installed for cache[lru-cache]");
+          int coreThreads = sconfig.getSidecarThreadPoolMaxSize();
+          int keepAliveTime = 60; // hard-coded
+          // This is actually unbounded queue (LinkedBlockingQueue w/o parameters)
+          // and bounded thread pool - only coreThreads is maximum, maximum number of threads is ignored
+          taskQueue = new LinkedBlockingQueue<>();
+          unboundedThreadPool = new ThreadPoolExecutor(
+            coreThreads, Integer.MAX_VALUE, 
+            keepAliveTime, TimeUnit.SECONDS,
+            taskQueue,
+            BlockingThreadPoolExecutorService.newDaemonThreadFactory(
+                "sidecar-thread-pool"));
         }
       }
+      
+      loadWriteCacheFileListCache();
+      loadStatistics();
+      activateJMXSinks();
       this.inited = true;
-      int coreThreads = sconfig.getSidecarThreadPoolMaxSize();
-      int keepAliveTime = 60; // hard-coded
-      // This is actually unbounded queue (LinkedBlockingQueue w/o parameters)
-      // and bounded thread pool - only coreThreads is maximum, maximum number of threads is ignored
-      taskQueue = new LinkedBlockingQueue<>();
-      unboundedThreadPool = new ThreadPoolExecutor(
-        coreThreads, Integer.MAX_VALUE, 
-        keepAliveTime, TimeUnit.SECONDS,
-        taskQueue,
-        BlockingThreadPoolExecutorService.newDaemonThreadFactory(
-            "sidecar-thread-pool"));
+ 
     } catch (Throwable e) {
       LOG.error(e.getMessage(), e);
       throw new IOException(e);
     }
   }
 
+  private void activateJMXSinks() {
+    SidecarConfig sconfig = SidecarConfig.getInstance();
+    if (sconfig.isJMXMetricsEnabled()) {
+      LOG.info("SidecarCachingFileSystem JMX enabled for sidecar");
+      String domainName = sconfig.getJMXMetricsDomainName();
+      String mtype = this.remoteURI.toString();
+      mtype = mtype.replace(":", "-");
+      mtype = mtype.replace("/", "");
+      registerSiteJMXMetricsSink(domainName);
+      registerSidecarJMXMetricsSink(domainName, mtype);
+    }      
+  }
+
+  public void registerSiteJMXMetricsSink(String domainName) {
+    MBeanServer mbs = ManagementFactory.getPlatformMBeanServer(); 
+    ObjectName name;
+    try {
+      name = new ObjectName(String.format("%s:type=Site,name=WriteCache",domainName));
+      SidecarSiteJMXSink mbean = new SidecarSiteJMXSink();
+      mbs.registerMBean(mbean, name); 
+    } catch (Exception e) {
+      LOG.error("Failed", e);
+    }
+  }
+  
+  public void registerSidecarJMXMetricsSink(String domainName, String type) {
+    MBeanServer mbs = ManagementFactory.getPlatformMBeanServer(); 
+    ObjectName name;
+    try {
+      name = new ObjectName(String.format("%s:type=%s,name=Statistics",domainName, type));
+      SidecarJMXSink mbean = new SidecarJMXSink(this);
+      mbs.registerMBean(mbean, name); 
+    } catch (Exception e) {
+      LOG.error("Failed", e);
+    }
+  }
+  
   private void shutdownExecutorService() {
     unboundedThreadPool.shutdownNow();
     boolean result = false;
@@ -424,6 +820,19 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return this.remoteFS;
   }
   
+  private String uriToFileSafeName(URI uri) {
+    String scheme = uri.getScheme();
+    String host = uri.getHost();
+    String path = uri.getPath();
+    if (host != null) {
+      scheme += "-" + host;
+    }
+    if (path != null) {
+      scheme += "-" + path;
+    }
+    return scheme;
+  }
+  
   private void loadWriteCacheFileListCache() throws IOException {
     if (!this.writeCacheEnabled) {
       LOG.info("Skipping write-cache-file-list loading, write cache is disabled");
@@ -447,6 +856,39 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
 
+  private void loadStatistics() throws IOException {
+    
+    CarrotConfig config = CarrotConfig.getInstance();
+    String snapshotDir = config.getSnapshotDir(uriToFileSafeName(remoteURI));
+    String fileName = snapshotDir + File.separator + "sidecar.stats";
+    File file = new File(fileName);
+    this.stats = new Statistics();
+
+    if (file.exists()) {
+      FileInputStream fis = new FileInputStream(file);
+      DataInputStream dis = new DataInputStream(fis);
+      this.stats.load(dis);
+      dis.close();
+      LOG.info("Loaded sidecar sidecar.stats");
+    } else {
+      LOG.info("Created new sidecar staistics");
+    }
+  }
+  
+  private void saveStatistics() throws IOException {
+
+    CarrotConfig config = CarrotConfig.getInstance();
+    String snapshotDir = config.getSnapshotDir(uriToFileSafeName(remoteURI));
+    String fileName = snapshotDir + File.separator + "sidecar.stats";
+    File file = new File(fileName);
+
+    FileOutputStream fos = new FileOutputStream(file);
+    DataOutputStream dos = new DataOutputStream(fos);
+    this.stats.save(dos);
+    dos.close();
+    LOG.info("Saved sidecar sidecar.stats");
+  }
+  
   private void loadMetaCache() throws IOException{
     CarrotConfig config = CarrotConfig.getInstance();
     SidecarConfig sconfig = SidecarConfig.getInstance();
@@ -478,6 +920,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (sconfig.isJMXMetricsEnabled()) {
       LOG.info("SidecarCachingFileSystem JMX enabled for meta-data cache");
       String domainName = sconfig.getJMXMetricsDomainName();
+      //String mtype = this.remoteURI.toString();
+      //mtype = mtype.replace(":", "-");
       metaCache.registerJMXMetricsSink(domainName);
     }  
   }
@@ -509,6 +953,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
     if (metricsEnabled) {
       String domainName = sconfig.getJMXMetricsDomainName();
+      //String mtype = this.remoteURI.toString();
+      //mtype = mtype.replace(":", "-");
       LOG.info("SidecarCachingFileSystem JMX enabled for data cache");
       dataCache.registerJMXMetricsSink(domainName);
     }
@@ -836,9 +1282,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     try {
       length = stream.length();
     } catch(IOException e) {
-      LOG.error("Remote stream getPos() failed {}", e.getMessage());
+      LOG.error("Remote stream getPos() failed {}", e);
     }
-    LOG.debug("Closing remote {} len={}", path, length);
+    /*DEBUG*/LOG.info("Closing remote {} len={}", path, length);
 
     if (writeCacheEnabled) {
       // It is save to update meta first in the cache
@@ -1047,6 +1493,14 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
   
+  /**
+   * Are files mutable in remote FS (FS supports append, or applications can overwrite files)
+   * @return true or false
+   */
+  public boolean isMutableFS() {
+    return this.remoteMutable;
+  }
+  
   /**********************************************************************************
    * 
    * Hadoop FileSystem API
@@ -1150,7 +1604,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FileStatus status = getFileStatus(qPath);
     FSDataInputStream cachingInputStream =
         new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
-            dataPageSize, ioBufferSize));
+            dataPageSize, ioBufferSize, this.stats));
     return cachingInputStream;
   }
   /**
@@ -1172,10 +1626,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       boolean overwrite, int bufferSize, short replication, long blockSize,
       Progressable progress) throws IOException {
   
-    LOG.debug("Create file: {}", f);
+    /*DEBUG*/ LOG.info("Sidecar create file: {}", f);
     FSDataOutputStream remoteOut = 
         ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, overwrite, bufferSize, replication, blockSize, progress);
     if (!this.writeCacheEnabled) {
+      /*DEBUG*/LOG.info("writeCacheEnabled=: {}", false);
       return remoteOut;
     }
     
@@ -1323,9 +1778,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         cacheSrc = remoteToCachingPath(src);
         cacheDst = remoteToCachingPath(dst);
         if (this.writeCacheFS.exists(cacheSrc)) {
-          this.writeCacheFS.rename(cacheSrc, cacheDst);
-          // Remove from write-cache file list
-          writeCacheFileList.remove(cacheSrc.toString());
+          boolean res = this.writeCacheFS.rename(cacheSrc, cacheDst);
+          if (res) {
+            // Remove from write-cache file list
+            Long len = writeCacheFileList.remove(cacheSrc.toString());
+            writeCacheFileList.put(cacheDst.toString(), len);
+          }
         }
       } catch (IOException e) {
         LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);
@@ -1360,9 +1818,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         cacheSrc = remoteToCachingPath(src);
         cacheDst = remoteToCachingPath(dst);
         if (this.writeCacheFS.exists(cacheSrc)) {
-          this.writeCacheFS.rename(cacheSrc, cacheDst);
-          // Remove from write-cache file list
-          writeCacheFileList.remove(cacheSrc.toString());
+          boolean res = this.writeCacheFS.rename(cacheSrc, cacheDst);
+          if (res) {
+            // Remove from write-cache file list
+            Long len = writeCacheFileList.remove(cacheSrc.toString());
+            writeCacheFileList.put(cacheDst.toString(), len);
+          }
         }
       } catch (IOException e) {
         LOG.error(String.format("Failed to rename {} to {}", cacheSrc, cacheDst), e);

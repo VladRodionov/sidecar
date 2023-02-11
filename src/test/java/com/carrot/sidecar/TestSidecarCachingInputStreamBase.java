@@ -372,7 +372,8 @@ public class TestSidecarCachingInputStreamBase {
     long fileLength = fileSize;
     try (
         SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
-            new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, ioBufferSize);) 
+            new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, 
+            ioBufferSize, new SidecarCachingFileSystem.Statistics());) 
     {
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
@@ -433,7 +434,8 @@ public class TestSidecarCachingInputStreamBase {
     long fileLength = fileSize;
 
     try (SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
-        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, ioBufferSize);) {
+        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, 
+        fileLength, pageSize, ioBufferSize, new SidecarCachingFileSystem.Statistics());) {
 
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
@@ -489,7 +491,8 @@ public class TestSidecarCachingInputStreamBase {
     long fileLength = fileSize;
 
     try (SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
-        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, ioBufferSize);) {
+        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, 
+        fileLength, pageSize, ioBufferSize, new SidecarCachingFileSystem.Statistics());) {
 
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();
@@ -524,7 +527,8 @@ public class TestSidecarCachingInputStreamBase {
     long fileLength = fileSize;
 
     try (SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
-        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, fileLength, pageSize, ioBufferSize);) {
+        new Path(sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, 
+        fileLength, pageSize, ioBufferSize, new SidecarCachingFileSystem.Statistics());) {
 
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();

@@ -17,8 +17,10 @@
  */
 package com.carrot.sidecar.util;
 
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -103,7 +105,7 @@ public class SidecarConfig extends Properties {
   
   public final static boolean DEFAULT_SIDECAR_JMX_METRICS_ENABLED = true;
   
-  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "com.carrot.sidecar";
+  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "Sidecar";
   
   public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
   
@@ -199,8 +201,13 @@ public class SidecarConfig extends Properties {
    * @return domain name
    */
   public String getJMXMetricsDomainName() {
-    return getProperty(SIDECAR_JMX_METRICS_DOMAIN_NAME_KEY, 
+    String v = getProperty(SIDECAR_JMX_METRICS_DOMAIN_NAME_KEY, 
       DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME);
+    try {
+      v += "-" + InetAddress.getLocalHost().getHostAddress();
+    } catch (UnknownHostException e) {
+    }
+    return v;
   }
   
   /**

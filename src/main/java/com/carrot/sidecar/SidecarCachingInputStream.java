@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
+import com.carrot.sidecar.SidecarCachingFileSystem.Statistics;
 
 @NotThreadSafe
 public class SidecarCachingInputStream extends InputStream 
@@ -145,6 +146,7 @@ public class SidecarCachingInputStream extends InputStream
     
   private byte[] one = new byte[1];
 
+  private SidecarCachingFileSystem.Statistics stats;
   /**
    * Constructor 
    * @param cache parent cache
@@ -156,9 +158,9 @@ public class SidecarCachingInputStream extends InputStream
    */
   public SidecarCachingInputStream(Cache cache, FileStatus status, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall,
-       int pageSize, int bufferSize) {
+       int pageSize, int bufferSize, Statistics stats) {
     this(cache, status.getPath(), remoteStreamCall, cacheStreamCall, status.getModificationTime(), 
-      status.getLen(), pageSize, bufferSize);
+      status.getLen(), pageSize, bufferSize, stats);
   }
   
   /**
@@ -174,7 +176,7 @@ public class SidecarCachingInputStream extends InputStream
    */
   public SidecarCachingInputStream(Cache cache, Path path, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall, long modTime, long fileLength,
-       int pageSize, int bufferSize) {
+       int pageSize, int bufferSize, Statistics stats) {
     this.cache = cache;
     this.remoteStreamCallable = remoteStreamCall;
     this.cacheStreamCallable = cacheStreamCall;
@@ -191,6 +193,7 @@ public class SidecarCachingInputStream extends InputStream
     // Must always be > 0 for performance 
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
+    this.stats = stats;
   }
   
   /**
@@ -271,8 +274,13 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public synchronized int read(byte[] bytesBuffer, int offset, int length) throws IOException {
     checkIfClosed();
-    return readInternal(bytesBuffer, offset, length, position,
+    this.stats.addTotalReadRequests(1);
+    int read = readInternal(bytesBuffer, offset, length, position,
         false);
+    if (read > 0) {
+      this.stats.addTotalBytesRead(read);
+    }
+    return read;
   }
 
   @Override
@@ -388,13 +396,23 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public synchronized int read(ByteBuffer buf) throws IOException {
     checkIfClosed();
-    return read(buf, buf.position(), buf.remaining());    
+    this.stats.addTotalReadRequests(1);
+    int read = read(buf, buf.position(), buf.remaining()); 
+    if (read > 0) {
+      this.stats.addTotalBytesRead(read);
+    }
+    return read;
   }
 
   @Override
   public synchronized int read(long position, byte[] buffer, int offset, int length) throws IOException {
     checkIfClosed();
-    return readInternal(buffer, offset, length,  position, true);    
+    this.stats.addTotalReadRequests(1);
+    int read = readInternal(buffer, offset, length,  position, true); 
+    if (read > 0) {
+      this.stats.addTotalBytesRead(read);
+    }
+    return read;
   }
 
   @Override
@@ -406,6 +424,9 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public synchronized void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
     checkIfClosed();
+    
+    this.stats.addTotalReadRequests(1);
+    
     int totalBytesRead = 0;
     while (totalBytesRead < length) {
       int bytesRead =
@@ -417,6 +438,8 @@ public class SidecarCachingInputStream extends InputStream
       }
       totalBytesRead += bytesRead;
     }
+    
+    this.stats.addTotalBytesRead(length);
   }
 
   /**
@@ -485,7 +508,8 @@ public class SidecarCachingInputStream extends InputStream
           this.bufferEndOffset - position);
       System.arraycopy(buffer, (int) (position - this.bufferStartOffset),
           bytesBuffer, offset, lengthToReadFromBuffer);
-      
+      this.stats.addTotalBytesReadPrefetch(lengthToReadFromBuffer);
+      this.stats.addTotalReadRequestsFromPrefetch(1);
       return lengthToReadFromBuffer;
     }
     // OK, not in I/O buffer - read from cache (or load from external streams)
@@ -523,6 +547,8 @@ public class SidecarCachingInputStream extends InputStream
       }
       if (bytesRead > 0) {
         this.bytesReadFromDataCache += bytesRead;
+        this.stats.addTotalReadRequestsFromDataCache(1);
+        this.stats.addTotalBytesReadDataCache(bytesRead);
         return bytesRead;
       }
     }
@@ -723,6 +749,8 @@ public class SidecarCachingInputStream extends InputStream
     } else {
       int len = (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
       buf = new byte[len];
+      // TODO: analyze
+      this.buffer = buf;
     }
     
     int toRead = buf == this.buffer? (int) Math.min(this.buffer.length, this.fileLength - pageRange.start): buf.length;
@@ -848,7 +876,6 @@ public class SidecarCachingInputStream extends InputStream
     }
   }
   
-
   /**
    * Convenience method to ensure the stream is not closed.
    */
@@ -892,6 +919,8 @@ public class SidecarCachingInputStream extends InputStream
     int read = is.read(position, buffer, bufOffset, len);
     if (read > 0) {
       this.bytesReadFromRemote += read;
+      this.stats.addTotalReadRequestsFromRemote(1);
+      this.stats.addTotalBytesReadRemote(read);
     }
     return read;
   }
@@ -910,6 +939,8 @@ public class SidecarCachingInputStream extends InputStream
       read = is.read(position, buffer, bufOffset, len);
       if (read > 0) {
         this.bytesReadFromWriteCache += read;
+        this.stats.addTotalReadRequestsFromWriteCache(1);
+        this.stats.addTotalBytesReadWriteCache(read);
       }
     } catch(IOException e) {
       //TODO: better exception handling?
@@ -934,6 +965,8 @@ public class SidecarCachingInputStream extends InputStream
       is.seek(pos + toAdvance);
     }
     this.bytesReadFromRemote += len;
+    this.stats.addTotalReadRequestsFromRemote(1);
+    this.stats.addTotalBytesReadRemote(len);
     return len;
   }
   
@@ -955,6 +988,8 @@ public class SidecarCachingInputStream extends InputStream
         is.seek(pos + toAdvance);
       }
       this.bytesReadFromWriteCache += len;
+      this.stats.addTotalReadRequestsFromWriteCache(1);
+      this.stats.addTotalBytesReadWriteCache(len);
       return len;
     } catch(IOException e) {
       //TODO: better exception handling

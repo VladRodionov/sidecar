@@ -18,6 +18,7 @@
 package com.carrot.sidecar.fs.hdfs;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.EnumSet;
 
@@ -30,10 +31,15 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Options.ChecksumOpt;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hdfs.DistributedFileSystem.HdfsDataOutputStreamBuilder;
+import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.util.Progressable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
@@ -47,6 +53,8 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
 @InterfaceStability.Evolving
 public class SidecarDistributedFileSystem extends DistributedFileSystem implements 
   MetaDataCacheable, RemoteFileSystemAccess {
+  private static final Logger LOG = LoggerFactory.getLogger(SidecarDistributedFileSystem.class);  
+
   private SidecarCachingFileSystem sidecar;
   
   public SidecarDistributedFileSystem() {}
@@ -73,6 +81,60 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
       int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
     return sidecar.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
+  }
+
+  @Override
+  public FSDataOutputStream append(Path f, EnumSet<CreateFlag> flag, int bufferSize,
+      Progressable progress) throws IOException {
+    LOG.error("***Sidecar append(Path f, EnumSet<CreateFlag> flag, int bufferSize,\n"
+        + "      Progressable progress)");
+    return super.append(f, flag, bufferSize, progress);
+  }
+
+  @Override
+  public FSDataOutputStream append(Path f, EnumSet<CreateFlag> flag, int bufferSize,
+      Progressable progress, InetSocketAddress[] favoredNodes) throws IOException {
+    LOG.error("***Sidecar append(Path f, EnumSet<CreateFlag> flag, int bufferSize,\n"
+        + "      Progressable progress, InetSocketAddress[] favoredNodes)");
+    return super.append(f, flag, bufferSize, progress, favoredNodes);
+  }
+
+  @Override
+  public HdfsDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
+      int bufferSize, short replication, long blockSize, Progressable progress,
+      InetSocketAddress[] favoredNodes) throws IOException {
+    // This
+    LOG.error("***Sidecar create(Path f, FsPermission permission, boolean overwrite,\n"
+        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
+        + "      InetSocketAddress[] favoredNodes)");
+    throw new IllegalArgumentException();
+    //Thread.dumpStack();
+    //return super.create(f, permission, overwrite, bufferSize, replication, blockSize, progress,
+    //  favoredNodes);
+  }
+
+  @Override
+  public FSDataOutputStream create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,
+      int bufferSize, short replication, long blockSize, Progressable progress,
+      ChecksumOpt checksumOpt) throws IOException {
+    // This
+    LOG.error("***Sidecar create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,\n"
+        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
+        + "      ChecksumOpt checksumOpt)");
+    return super.create(f, permission, cflags, bufferSize, replication, blockSize, progress,
+      checksumOpt);
+  }
+
+  @Override
+  public HdfsDataOutputStreamBuilder createFile(Path path) {
+    LOG.error("***Sidecar createFile(Path path)");
+    return super.createFile(path);
+  }
+
+  @Override
+  public HdfsDataOutputStreamBuilder appendFile(Path path) {
+    LOG.error("***Sidecar appendFile(Path path)");
+    return super.appendFile(path);
   }
 
   @Override
