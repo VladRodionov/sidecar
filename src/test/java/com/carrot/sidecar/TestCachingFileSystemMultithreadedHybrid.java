@@ -23,8 +23,6 @@ import com.carrot.cache.controllers.AQBasedAdmissionController;
 import com.carrot.cache.controllers.MinAliveRecyclingSelector;
 import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
-import com.carrot.sidecar.util.SidecarCacheType;
-import com.carrot.sidecar.util.SidecarConfig;
 
 public class TestCachingFileSystemMultithreadedHybrid extends TestCachingFileSystemMultithreadedBase{
 

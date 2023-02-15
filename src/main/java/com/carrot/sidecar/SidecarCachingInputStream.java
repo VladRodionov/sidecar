@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
 import com.carrot.sidecar.SidecarCachingFileSystem.Statistics;
+import com.carrot.sidecar.util.ScanDetector;
 
 @NotThreadSafe
 public class SidecarCachingInputStream extends InputStream 
@@ -86,6 +87,9 @@ public class SidecarCachingInputStream extends InputStream
   
   /** The length of the remote file */
   private long fileLength;
+  
+  /** Is this file cacheable */
+  private boolean isCacheable;
   
   /** Key base for all data pages in this external file*/
   private byte[] baseKey;
@@ -147,6 +151,9 @@ public class SidecarCachingInputStream extends InputStream
   private byte[] one = new byte[1];
 
   private SidecarCachingFileSystem.Statistics stats;
+  
+  private ScanDetector sd;
+  
   /**
    * Constructor 
    * @param cache parent cache
@@ -155,12 +162,15 @@ public class SidecarCachingInputStream extends InputStream
    * @param ccheStreamFuture cache input stream callable
    * @param pageSize page size
    * @param bufferSize I/O buffer size (at least as large as page size)
+   * @param stats statistics agent
+   * @param sd scan detector to detect long scan operations
+   * @param isCacheable can cache?
    */
   public SidecarCachingInputStream(Cache cache, FileStatus status, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall,
-       int pageSize, int bufferSize, Statistics stats) {
+       int pageSize, int bufferSize, Statistics stats, boolean isCacheable, ScanDetector sd) {
     this(cache, status.getPath(), remoteStreamCall, cacheStreamCall, status.getModificationTime(), 
-      status.getLen(), pageSize, bufferSize, stats);
+      status.getLen(), pageSize, bufferSize, stats, isCacheable, sd);
   }
   
   /**
@@ -173,10 +183,13 @@ public class SidecarCachingInputStream extends InputStream
    * @param fileLength file length
    * @param pageSize page size
    * @param bufferSize I/O buffer size (at least as large as page size)
+   * @param stats statistics agent
+   * @param sd scan detector to detect long scan operations
+   * @param isCacheable can cache?
    */
   public SidecarCachingInputStream(Cache cache, Path path, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall, long modTime, long fileLength,
-       int pageSize, int bufferSize, Statistics stats) {
+       int pageSize, int bufferSize, Statistics stats, boolean isCacheable, ScanDetector sd) {
     this.cache = cache;
     this.remoteStreamCallable = remoteStreamCall;
     this.cacheStreamCallable = cacheStreamCall;
@@ -194,6 +207,8 @@ public class SidecarCachingInputStream extends InputStream
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
     this.stats = stats;
+    this.isCacheable = isCacheable;
+    this.sd = sd;
   }
   
   /**
@@ -556,8 +571,9 @@ public class SidecarCachingInputStream extends InputStream
     // progress or throw an exception
     // This is assumption that external buffer size == page size (???)
     int size = readExternalPage(position);
+    long fileOffset = position / pageSize * pageSize;
     if (size > 0) {
-      dataPagePut(key, 0, key.length, this.pageBuffer, 0, size);
+      dataPagePut(key, 0, key.length, this.pageBuffer, 0, size, fileOffset);
       bytesToReadInPage = Math.min(bytesToReadInPage, size - currentPageOffset);
       System.arraycopy(this.pageBuffer, currentPageOffset, bytesBuffer, offset, bytesToReadInPage);
       // Can be negative
@@ -570,7 +586,7 @@ public class SidecarCachingInputStream extends InputStream
    * Page range aligned with page size
    * @param position start position
    * @param len length of the range
-   * @return page range (multiples pf pages covering the requested range)
+   * @return page range (multiples of pages covering the requested range)
    */
   private Range getPageRange(long position, int len) {
     long start = position / this.pageSize * this.pageSize;
@@ -686,9 +702,24 @@ public class SidecarCachingInputStream extends InputStream
     return cache.exists(key);
   }
   
-  private boolean dataPagePut(byte[] key, int keyOffset, int keySize, byte[] value, int valueOffset, int valueSize)
+  private boolean dataPagePut(byte[] key, int keyOffset, int keySize, 
+      byte[] value, int valueOffset, int valueSize, long fileOffset /* to detect scan*/)
     throws IOException
   {
+    if (!isCacheable) {
+      return false;
+    }
+    if (this.sd != null) {
+      long curOffset = sd.current();
+      if (curOffset != fileOffset) {
+        boolean scanDetected = sd.record(fileOffset);
+        if (scanDetected) {
+          this.isCacheable = false;
+          this.stats.addTotalScansDetected(1);
+          return false;
+        }
+      }
+    }
     return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
   }
   
@@ -715,8 +746,9 @@ public class SidecarCachingInputStream extends InputStream
     boolean fullCache = count(in_cache) == in_cache.length;
     if (fullCache) {
       this.hits++;
-      // Basically reads data from cache, but in case if any page is missing it will be 
+      // Basically reads data from the cache, but in case if any page is missing it will be 
       // loaded from other sources (write cache or remote FS)
+      // this can happen sometimes (rarely)
       return readInternal0(bytesBuffer, offset, length, position, isPositionedRead);
     }
     // Some pages (or all of them) are missing
@@ -733,11 +765,15 @@ public class SidecarCachingInputStream extends InputStream
         if (diff[i]) {
           byte[] key = getKey(this.baseKey, pos, this.pageSize);
           int size = (int) Math.min(this.pageSize, this.bufferEndOffset - pos);
-          dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), size);
+          long fileOffset = pos /pageSize * pageSize;
+          dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), 
+            size, fileOffset);
         }
         pos += this.pageSize;
       }
       // Now we have everything in the cache
+      //TODO: performance optimization
+      // double read/write
       return readInternal0(bytesBuffer, offset, length, position, isPositionedRead);
     }
     // Some pages are neither in the cache nor in the I/O buffer - read ALL from write cache FS
@@ -768,7 +804,8 @@ public class SidecarCachingInputStream extends InputStream
       if (!in_cache[i]) {
         byte[] key = getKey(this.baseKey, pos, this.pageSize);
         int size = (int) Math.min(this.pageSize, this.fileLength - pos);
-        dataPagePut(key, 0, key.length, buf, i * this.pageSize, size);
+        long fileOffset = pos / pageSize * pageSize;
+        dataPagePut(key, 0, key.length, buf, i * this.pageSize, size, fileOffset);
       }
       pos += this.pageSize;
     }

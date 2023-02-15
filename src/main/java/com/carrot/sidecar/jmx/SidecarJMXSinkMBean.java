@@ -48,4 +48,14 @@ public interface SidecarJMXSinkMBean {
   
   long gettotal_read_requests_prefetch();
   
+  long gettotal_scans_detected();
+  
+  long gettotal_files_created();
+  
+  long gettotal_files_deleted();
+  
+  long gettotal_files_opened();
+  
+  long gettotal_files_opened_write_cache();
+  
 }

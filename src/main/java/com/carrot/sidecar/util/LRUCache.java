@@ -69,6 +69,15 @@ public class LRUCache<K, V> {
   }
   
   /**
+   * Exists key
+   * @param key
+   * @return true or false
+   */
+  public boolean exists(K key) {
+    return mLRUCache.containsKey(key);
+  }
+  
+  /**
    * Get eviction candidate
    * @return eviction candidate
    */

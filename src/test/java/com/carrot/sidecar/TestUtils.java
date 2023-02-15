@@ -41,8 +41,6 @@ import com.carrot.cache.io.BaseDataWriter;
 import com.carrot.cache.io.BaseFileDataReader;
 import com.carrot.cache.io.BaseMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
-import com.carrot.sidecar.util.SidecarCacheType;
-import com.carrot.sidecar.util.SidecarConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -17,8 +17,8 @@
  */
 package com.carrot.sidecar;
 
-import static com.carrot.sidecar.util.SidecarConfig.DATA_CACHE_FILE_NAME;
-import static com.carrot.sidecar.util.SidecarConfig.META_CACHE_NAME;
+import static com.carrot.sidecar.SidecarConfig.DATA_CACHE_FILE_NAME;
+import static com.carrot.sidecar.SidecarConfig.META_CACHE_NAME;
 import static com.carrot.sidecar.util.Utils.getBaseKey;
 import static com.carrot.sidecar.util.Utils.getKey;
 import static com.carrot.sidecar.util.Utils.hashCrypto;
@@ -74,12 +74,10 @@ import com.carrot.cache.io.BlockMemoryDataReader;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.util.SidecarCacheType;
 import com.carrot.sidecar.jmx.SidecarJMXSink;
 import com.carrot.sidecar.jmx.SidecarSiteJMXSink;
-import com.carrot.sidecar.util.CachedFileStatus;
 import com.carrot.sidecar.util.LRUCache;
-import com.carrot.sidecar.util.SidecarConfig;
+import com.carrot.sidecar.util.ScanDetector;
 
 
 public class SidecarCachingFileSystem implements SidecarCachingOutputStream.Listener{
@@ -105,6 +103,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     AtomicLong totalReadRequestsFromRemote = new AtomicLong();
     
     AtomicLong totalReadRequestsFromPrefetch = new AtomicLong();
+    
+    AtomicLong totalScansDetected = new AtomicLong();
+    
+    AtomicLong totalFilesCreated = new AtomicLong();
+    
+    AtomicLong totalFilesDeleted = new AtomicLong();
+    
+    AtomicLong totalFilesOpened = new AtomicLong();
+    
+    AtomicLong totalFilesOpenedInWriteCache = new AtomicLong();
     
     /**
      * Add total bytes read
@@ -275,6 +283,92 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     public long getTotalReadRequestsFromPrefetch() {
       return totalReadRequestsFromPrefetch.get();
     }
+    
+    /**
+     * Get total scan operation detected
+     * @return total scans detected
+     */
+    public long getTotalScansDetected() {
+      return this.totalScansDetected.get();
+    }
+    
+    /**
+     *  Add total scans detected
+     * @param v number
+     * @return new value
+     */
+    public long addTotalScansDetected(long v) {
+      return this.totalScansDetected.addAndGet(v);
+    }
+    
+    /**
+     * Get total files created
+     * @return total files created
+     */
+    public long getTotalFilesCreated() {
+      return this.totalFilesCreated.get();
+    }
+    
+    /**
+     * Add total files created
+     * @param n number of files
+     * @return new value
+     */
+    public long addTotalFilesCreated(long n) {
+      return this.totalFilesCreated.addAndGet(n);
+    }
+    
+    /**
+     * Get total files deleted
+     * @return total files deleted
+     */
+    public long getTotalFilesDeleted() {
+      return this.totalFilesDeleted.get();
+    }
+    
+    /**
+     * Add total files deleted
+     * @param n number of files
+     * @return new value
+     */
+    public long addTotalFilesDeleted(long n) {
+      return this.totalFilesDeleted.addAndGet(n);
+    }
+    
+    /**
+     * Get total files opened
+     * @return total files opened
+     */
+    public long getTotalFilesOpened() {
+      return this.totalFilesOpened.get();
+    }
+    
+    /**
+     * Add total files opened
+     * @param n number of files
+     * @return new value
+     */
+    public long addTotalFilesOpened(long n) {
+      return this.totalFilesOpened.addAndGet(n);
+    }
+
+    /**
+     * Get total files opened in write cache
+     * @return total files opened
+     */
+    public long getTotalFilesOpenedInWriteCache() {
+      return this.totalFilesOpenedInWriteCache.get();
+    }
+    
+    /**
+     * Add total files opened in write cache
+     * @param n number of files
+     * @return new value
+     */
+    public long addTotalFilesOpenedInWriteCache(long n) {
+      return this.totalFilesOpenedInWriteCache.addAndGet(n);
+    }
+    
     /**
      * Save statistics
      * @param dos data output stream
@@ -286,12 +380,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
        dos.writeLong(totalBytesReadWriteCache.get());
        dos.writeLong(totalBytesReadDataCache.get());
        dos.writeLong(totalBytesReadPrefetch.get());
-       
        dos.writeLong(totalReadRequests.get()); 
        dos.writeLong(totalReadRequestsFromWriteCache.get()); 
        dos.writeLong(totalReadRequestsFromDataCache.get()); 
        dos.writeLong(totalReadRequestsFromRemote.get()); 
        dos.writeLong(totalReadRequestsFromPrefetch.get());
+       dos.writeLong(totalScansDetected.get());
+       dos.writeLong(totalFilesCreated.get());
+       dos.writeLong(totalFilesDeleted.get());
+       dos.writeLong(totalFilesOpened.get());
+       dos.writeLong(totalFilesOpenedInWriteCache.get());
+       
     }
     
     /**
@@ -310,6 +409,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       totalReadRequestsFromDataCache.set(dis.readLong());
       totalReadRequestsFromRemote.set(dis.readLong());
       totalReadRequestsFromPrefetch.set(dis.readLong());
+      totalScansDetected.set(dis.readLong());
+      totalFilesCreated.set(dis.readLong());
+      totalFilesDeleted.set(dis.readLong());
+      totalFilesOpened.set(dis.readLong());
+      totalFilesOpenedInWriteCache.set(dis.readLong());
     }
   }
   
@@ -423,6 +527,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Write cache mode (DISABLED, SYNC, ASYNC, ASYNC_TURBO)
    */
   private WriteCacheMode writeCacheMode;
+  
+  /**
+   * Data cache mode: ALL, NOT_IN_WRITE_CACHE, SIZE_OVER
+   */
+  private DataCacheMode dataCacheMode;
+  
+  /**
+   * Minimal file size to cache if data cache mode == SIZE_OVER
+   */
+  private long minSizeToCache;
+  
   /**
    * Is meta data cacheable
    */
@@ -443,7 +558,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private Statistics stats;
   
-
+  /**
+   * Scan detector is enabled on READ
+   */
+  private boolean scanDetectorEnabled;
+  
+  /**
+   * Scan threshold in data pages
+   */
+  private int scanThreashold;
+  
   public static SidecarCachingFileSystem get(FileSystem dataTier) throws IOException {
     checkJavaVersion();
 
@@ -544,6 +668,39 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     String cacheTypes = join(newTypes, ",");
     config.setCacheNames(cacheNames);
     config.setCacheTypes(cacheTypes);
+  }
+  
+  
+  /**
+   * Is scan detector enabled
+   * @return true, false
+   */
+  public boolean isScanDetectorEnabled() {
+    return this.scanDetectorEnabled;
+  }
+  
+  /**
+   * Set scan detector enabled
+   * @param b enabled or not
+   */
+  public void setScanDetectorEnabled(boolean b) {
+    this.scanDetectorEnabled = b;
+  }
+  
+  /**
+   * Get scan detector threshold
+   * @return scan detector threshold
+   */
+  public int getScanDetectorThreshold() {
+    return this.scanThreashold;
+  }
+  
+  /**
+   * Sets scan detector threshold
+   * @param value new threshold
+   */
+  public void setScanDetectorThreshold(int value) {
+    this.scanThreashold = value;
   }
   
   /**
@@ -660,6 +817,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       
       final SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
       dataCacheType = sconfig.getDataCacheType();
+      
       // Add two caches (sidecar-data, sidecar-meta) types to the configuration
       setDataCacheType(config, dataCacheType);      
       // meta cache is always offheap
@@ -671,6 +829,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.writeCacheMode = sconfig.getWriteCacheMode();
       this.writeCacheEnabled = writeCacheMode != WriteCacheMode.DISABLED;
       this.remoteMutable = sconfig.areRemoteFilesMutable();
+      this.dataCacheMode = sconfig.getDataCacheMode();
+      this.minSizeToCache = sconfig.getCacheableFileSizeThreshold();
+      this.scanDetectorEnabled = sconfig.isScanDetectorEnabled();
+      this.scanThreashold = sconfig.getScanDetectorThreshold();
       
       if (this.writeCacheEnabled) {
         writeCacheMaxSize = sconfig.getWriteCacheSizePerInstance();
@@ -804,6 +966,25 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
   }
  
+  private boolean inWriteCache(Path p) {
+    boolean result = writeCacheFileList.exists(p.toString());
+    this.stats.addTotalFilesOpened(1);
+    if (result) {
+      this.stats.addTotalFilesOpenedInWriteCache(1);
+    }
+    return result;
+  }
+  
+  private boolean isCacheableFile(Path p, long size) {
+    p = remoteToCachingPath(p);
+    switch(dataCacheMode) {
+      case ALL: return true;
+      case NOT_IN_WRITE_CACHE: return !inWriteCache(p);
+      case SIZE_OVER: return size > this.minSizeToCache || !inWriteCache(p);
+    }
+    return true;
+  }
+  
   /**
    * Get write cache FS
    * @return write cache file system
@@ -953,8 +1134,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
     if (metricsEnabled) {
       String domainName = sconfig.getJMXMetricsDomainName();
-      //String mtype = this.remoteURI.toString();
-      //mtype = mtype.replace(":", "-");
       LOG.info("SidecarCachingFileSystem JMX enabled for data cache");
       dataCache.registerJMXMetricsSink(domainName);
     }
@@ -1085,6 +1264,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @return true - yes, false - otherwise
    */
   private boolean metaExists(Path p) {
+    if (!metaCacheable) {
+      return false;
+    }
     p = isQualified(p)? p: this.remoteFS.makeQualified(p);
     byte[] hashedKey = hashCrypto(p.toString().getBytes());
     boolean b = metaExists(hashedKey);
@@ -1104,6 +1286,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @return true on success, false - otherwise
    */
   private boolean metaPut(Path p, FileStatus status) {
+    if (!metaCacheable) {
+      return false;
+    }
     p = isQualified(p)? p: this.remoteFS.makeQualified(p);
     byte[] hashedKey = hashCrypto(p.toString().getBytes());
     return metaPut(hashedKey, status);
@@ -1133,6 +1318,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private FileStatus metaGet (Path p) {
+    if (!metaCacheable) {
+      return null;
+    }
     p = isQualified(p)? p: this.remoteFS.makeQualified(p);
     byte[] hashedKey = hashCrypto(p.toString().getBytes());
     byte[] data =  metaGet(hashedKey);
@@ -1172,6 +1360,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private boolean metaDelete(Path p) {
+    if (!metaCacheable) {
+      return false;
+    }
     p = isQualified(p)? p: this.remoteFS.makeQualified(p);
     byte[] hashedKey = hashCrypto(p.toString().getBytes());
     return metaDelete(hashedKey);
@@ -1198,8 +1389,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   private void metaSave(Path path, FileStatus status) {
     if (metaCacheable) {
-      // TODO: remove this comment after debug
-      // byte[] key = path.toString().getBytes();
       if (!metaExists(path)) {
         boolean result = metaPut(path, status);
         if (!result) {
@@ -1279,6 +1468,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         
     final Path path = this.remoteFS.makeQualified(stream.getRemotePath());
     long length = 0;
+    
+    this.stats.addTotalFilesCreated(1);
+    
     try {
       length = stream.length();
     } catch(IOException e) {
@@ -1602,9 +1794,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       };
     }
     FileStatus status = getFileStatus(qPath);
+    long length = status.getLen();
+    boolean cacheOnRead = isCacheableFile(qPath, length);
+    ScanDetector sd = cacheOnRead && isScanDetectorEnabled()? 
+        new ScanDetector(scanThreashold, dataPageSize): null;
     FSDataInputStream cachingInputStream =
         new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
-            dataPageSize, ioBufferSize, this.stats));
+            dataPageSize, ioBufferSize, this.stats, cacheOnRead, sd));
     return cachingInputStream;
   }
   /**
@@ -1630,7 +1826,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataOutputStream remoteOut = 
         ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, overwrite, bufferSize, replication, blockSize, progress);
     if (!this.writeCacheEnabled) {
-      /*DEBUG*/LOG.info("writeCacheEnabled=: {}", false);
       return remoteOut;
     }
     
@@ -1836,7 +2031,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Delete {} recursive={}", f, recursive);
     FileStatus status = metaGet(f);
     boolean result = ((RemoteFileSystemAccess)remoteFS).deleteRemote(f, recursive);
-   
+    
+    if (result) {
+      this.stats.addTotalFilesDeleted(1);
+    }
+    
     // Check if f is file
     if (status != null && result) {
       // Clear data pages cache

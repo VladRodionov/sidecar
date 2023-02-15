@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.util;
+package com.carrot.sidecar;
 
 import java.io.DataOutput;
 import java.io.IOException;
@@ -26,9 +26,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.carrot.sidecar.RemoteFileSystemAccess;
-import com.carrot.sidecar.SidecarCachingFileSystem;
 
 public class CachedFileStatus extends FileStatus {
   

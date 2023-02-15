@@ -118,4 +118,34 @@ public class SidecarJMXSink implements SidecarJMXSinkMBean{
     Statistics stats = sidecar.getStatistics();
     return stats.getTotalReadRequestsFromPrefetch();
   }
+  
+  @Override
+  public long gettotal_scans_detected() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalScansDetected();
+  }
+  
+  @Override
+  public long gettotal_files_created() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalFilesCreated();
+  }
+  
+  @Override
+  public long gettotal_files_deleted() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalFilesDeleted();
+  }
+  
+  @Override
+  public long gettotal_files_opened() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalFilesOpened();
+  }
+  
+  @Override
+  public long gettotal_files_opened_write_cache() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalFilesOpenedInWriteCache();
+  }
 }

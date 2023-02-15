@@ -30,19 +30,17 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Options.ChecksumOpt;
 import org.apache.hadoop.fs.Options.Rename;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
-import org.apache.hadoop.hdfs.DistributedFileSystem.HdfsDataOutputStreamBuilder;
-import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.MetaDataCacheable;
+import com.carrot.sidecar.RemoteFileSystemAccess;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 
 /**
@@ -97,20 +95,6 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
     LOG.error("***Sidecar append(Path f, EnumSet<CreateFlag> flag, int bufferSize,\n"
         + "      Progressable progress, InetSocketAddress[] favoredNodes)");
     return super.append(f, flag, bufferSize, progress, favoredNodes);
-  }
-
-  @Override
-  public HdfsDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
-      int bufferSize, short replication, long blockSize, Progressable progress,
-      InetSocketAddress[] favoredNodes) throws IOException {
-    // This
-    LOG.error("***Sidecar create(Path f, FsPermission permission, boolean overwrite,\n"
-        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
-        + "      InetSocketAddress[] favoredNodes)");
-    throw new IllegalArgumentException();
-    //Thread.dumpStack();
-    //return super.create(f, permission, overwrite, bufferSize, replication, blockSize, progress,
-    //  favoredNodes);
   }
 
   @Override

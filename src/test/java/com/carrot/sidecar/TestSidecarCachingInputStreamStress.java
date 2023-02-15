@@ -44,7 +44,6 @@ import com.carrot.cache.eviction.SLRUEvictionPolicy;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Epoch;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.util.SidecarConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,7 +192,7 @@ public class TestSidecarCachingInputStreamStress {
     try (
         SidecarCachingInputStream carrotStream = new SidecarCachingInputStream(cache,
             new Path(this.sourceFile.toURI()), extStreamCall, cacheStreamCall, 0, 
-            fileLength, pageSize, ioBufferSize, new SidecarCachingFileSystem.Statistics());) 
+            fileLength, pageSize, ioBufferSize, new SidecarCachingFileSystem.Statistics(), true, null);) 
     {
       FSDataInputStream cacheStream = new FSDataInputStream(carrotStream);
       FSDataInputStream extStream = extStreamCall.call();

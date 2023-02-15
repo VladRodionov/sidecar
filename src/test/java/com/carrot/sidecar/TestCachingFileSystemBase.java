@@ -43,9 +43,6 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
-import com.carrot.sidecar.util.SidecarCacheType;
-import com.carrot.sidecar.util.CachedFileStatus;
-import com.carrot.sidecar.util.SidecarConfig;
 
 /**
  * This test creates instance of a caching file system 

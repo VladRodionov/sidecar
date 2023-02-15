@@ -15,33 +15,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.util;
+package com.carrot.sidecar;
 
-public enum SidecarCacheType {
+public enum DataCacheMode {
+  ALL("ALL"), // Cache everything
+  NOT_IN_WRITE_CACHE ("NOT_IN_WRITE_CACHE"), // cache data only if file is not in write cache       
+  SIZE_OVER ("SIZE_OVER");      // cache data only if file size is over some threshold
   
-  OFFHEAP("offheap"),
-  FILE("file"),
-  HYBRID("hybrid");
+  private final String mode;
   
-  private final String type;
-  
-  SidecarCacheType(String type) {
-    this.type = type;
+  DataCacheMode(String mode) {
+    this.mode = mode;
   }
   
-  public String getType() {
-    return type;
+  public String getMode() {
+    return mode;
   }
   
-  public String getCacheName() {
-    switch(this) {
-      case OFFHEAP: return SidecarConfig.DATA_CACHE_OFFHEAP_NAME;
-      case FILE: return SidecarConfig.DATA_CACHE_FILE_NAME;
-      default: return null;
-    }
-  }
-  
-  public static SidecarCacheType defaultType() {
-    return SidecarCacheType.FILE;
+  public static DataCacheMode defaultMode() {
+    return DataCacheMode.ALL;
   }
 }

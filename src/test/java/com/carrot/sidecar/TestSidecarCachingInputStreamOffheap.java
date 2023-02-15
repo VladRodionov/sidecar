@@ -15,8 +15,6 @@ package com.carrot.sidecar;
 
 import java.io.IOException;
 
-import com.carrot.sidecar.util.SidecarCacheType;
-
 public class TestSidecarCachingInputStreamOffheap extends TestSidecarCachingInputStreamBase {
 
   @Override 

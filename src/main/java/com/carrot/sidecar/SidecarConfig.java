@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.carrot.sidecar.util;
+package com.carrot.sidecar;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -29,8 +29,6 @@ import java.util.Properties;
 import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.carrot.sidecar.WriteCacheMode;
 
 public class SidecarConfig extends Properties {
   private static final long serialVersionUID = 1L;
@@ -93,7 +91,31 @@ public class SidecarConfig extends Properties {
    */
   public final static String SIDECAR_REMOTE_FILES_MUTABLE_KEY = "sidecar.remote.files.mutable";
   
+  /**
+   * Sidecar data cache mode
+   */
+  public final static String SIDECAR_DATA_CACHE_MODE_KEY = "sidecar.data.cache.mode";
+  
+  /**
+   * If cache data mode == SIZE_OVER - this is the threshold
+   */
+  public final static String SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY = "sidecar.cache.size.over.threshold";
+  
+  /**
+   * Sidecar scan detector. Detects long scan operations to avoid caching data for long scans
+   * (read - compactions)
+   * 
+   */
+  public final static String SIDECAR_SCAN_DETECTOR_ENABLED_KEY = "sidecar.scan.detector.enabled";
+  
+  /**
+   * Sidecar scan detector threshold in data pages
+   */
+  public final static String SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY = "sidecar.scan.detector.threshold.pages";
+  
   public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC;
+  
+  public final static DataCacheMode DEFAULT_SIDECAR_DATA_CACHE_MODE = DataCacheMode.ALL;
   
   public final static long DEFAULT_SIDECAR_WRITE_CACHE_SIZE = 0;
   
@@ -119,6 +141,11 @@ public class SidecarConfig extends Properties {
   
   public final static boolean DEFAULT_SIDECAR_INSTALL_SHUTDOWN_HOOK = false;
   
+  public final static long DEFAULT_SIDECAR_CACHE_SIZE_OVER_THRESHOLD = 100L * (1 << 20); // 100MB
+  
+  public final static boolean DEFAULT_SIDECAR_SCAN_DETECTOR_ENABLED = false;
+  
+  public final static int DEFAULT_SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES = 10;
   
   private static SidecarConfig instance;
   
@@ -520,4 +547,90 @@ public class SidecarConfig extends Properties {
     return this;
   }
   
+  /**
+   * Get data cache mode
+   * @return data cache mode
+   */
+  public DataCacheMode getDataCacheMode() {
+    String value = getProperty(SIDECAR_DATA_CACHE_MODE_KEY);
+    if (value != null) {
+      return DataCacheMode.valueOf(value.toUpperCase());
+    }
+    return DEFAULT_SIDECAR_DATA_CACHE_MODE;
+  }
+  
+  /**
+   * Set data cache mode
+   * @param mode data cache mode
+   * @return self
+   */
+  public SidecarConfig setDataCacheMode(DataCacheMode mode) {
+    setProperty(SIDECAR_DATA_CACHE_MODE_KEY, mode.toString());
+    return this;
+  }
+  
+  /**
+   * Get cacheable file size threshold
+   * @return minimum file size to cache
+   */
+  public long getCacheableFileSizeThreshold () {
+    String value = getProperty(SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY);
+    if (value != null) {
+      return Long.parseLong(value);
+    }
+    return DEFAULT_SIDECAR_CACHE_SIZE_OVER_THRESHOLD;
+  }
+  
+  /**
+   * Set minimum file size to cache
+   * @param size minimum size
+   * @return self
+   */
+  public SidecarConfig setCacheableFileSizeThreshold(long size) {
+    setProperty(SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY, Long.toString(size));
+    return this;
+  }
+  
+  /**
+   * Is scan detector enabled 
+   * @return true - if yes, false - otherwise
+   */
+  public boolean isScanDetectorEnabled() {
+    String value = getProperty(SIDECAR_SCAN_DETECTOR_ENABLED_KEY);
+    if (value != null) {
+      return Boolean.parseBoolean(value);
+    }
+    return DEFAULT_SIDECAR_SCAN_DETECTOR_ENABLED;
+  }
+  /**
+   * Set scan detector enabled
+   * @param b value
+   * @return self
+   */
+  public SidecarConfig setScanDetectorEnabled(boolean b) {
+    setProperty(SIDECAR_SCAN_DETECTOR_ENABLED_KEY, Boolean.toString(b));
+    return this;
+  }
+  
+  /**
+   * Get scan detector threshold in pages
+   * @return number of consecutive pages to be considered as a wide scan operation
+   */
+  public int getScanDetectorThreshold() {
+    String value = getProperty(SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY);
+    if (value != null) {
+      return Integer.parseInt(value);
+    }
+    return DEFAULT_SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES;
+  }
+  
+  /**
+   * Set scan detector threshold value 
+   * @param value value
+   * @return self
+   */
+  public SidecarConfig setScanDetectorThreshold(int value) {
+    setProperty(SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY, Integer.toString(value));
+    return this;
+  }
 }
