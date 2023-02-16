@@ -45,12 +45,12 @@ import com.carrot.sidecar.SidecarCachingFileSystem;
  * fs.file.impl=com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem
  *
  */
-public class FileSidecarCachingFileSystem extends LocalFileSystem 
+public class SidecarLocalFileSystem extends LocalFileSystem 
   implements MetaDataCacheable, RemoteFileSystemAccess{
   
   private SidecarCachingFileSystem sidecar;
 
-  public FileSidecarCachingFileSystem() {}
+  public SidecarLocalFileSystem() {}
   
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {

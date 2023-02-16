@@ -414,10 +414,10 @@ public class TestSidecarCachingInputStreamBase {
         }
         assertTrue(result);
         if (i > 0 && i % 100000 == 0) {
-          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={} hitRate={}", 
+          LOG.info("{}: read {} offset={} size={} direct read={} cache read={} sample={} loop={} ", 
             Thread.currentThread().getName(), i, offset, requestSize,
-            (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000,
-            carrotStream.getHitRate());
+            (t2 - t1) / 1000, (t3 - t2) / 1000, (sampleEnd - sampleStart)/1000, (endLoop - startLoop)/ 1000/*,
+            carrotStream.getHitRate()*/);
         }
       }
       long endTime = System.currentTimeMillis();

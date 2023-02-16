@@ -415,6 +415,24 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       totalFilesOpened.set(dis.readLong());
       totalFilesOpenedInWriteCache.set(dis.readLong());
     }
+    
+    public void reset() {
+      totalBytesRead.set(0);
+      totalBytesReadRemote.set(0);
+      totalBytesReadWriteCache.set(0);
+      totalBytesReadDataCache.set(0);
+      totalBytesReadPrefetch.set(0);
+      totalReadRequests.set(0);
+      totalReadRequestsFromWriteCache.set(0);
+      totalReadRequestsFromDataCache.set(0);
+      totalReadRequestsFromRemote.set(0);
+      totalReadRequestsFromPrefetch.set(0);
+      totalScansDetected.set(0);
+      totalFilesCreated.set(0);
+      totalFilesDeleted.set(0);
+      totalFilesOpened.set(0);
+      totalFilesOpenedInWriteCache.set(0);
+    }
   }
   
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);  
@@ -1263,7 +1281,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @param p file path (expect fully qualified)
    * @return true - yes, false - otherwise
    */
-  private boolean metaExists(Path p) {
+  final boolean metaExists(Path p) {
     if (!metaCacheable) {
       return false;
     }
@@ -1285,7 +1303,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @param status file status
    * @return true on success, false - otherwise
    */
-  private boolean metaPut(Path p, FileStatus status) {
+  final boolean metaPut(Path p, FileStatus status) {
     if (!metaCacheable) {
       return false;
     }
@@ -1317,7 +1335,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return false;
   }
   
-  private FileStatus metaGet (Path p) {
+  final FileStatus metaGet (Path p) {
     if (!metaCacheable) {
       return null;
     }
@@ -1359,7 +1377,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return null;
   }
   
-  private boolean metaDelete(Path p) {
+  final boolean metaDelete(Path p) {
     if (!metaCacheable) {
       return false;
     }
@@ -1387,7 +1405,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @param path path to a file
    * @param status file status
    */
-  private void metaSave(Path path, FileStatus status) {
+  final void metaSave(Path path, FileStatus status) {
     if (metaCacheable) {
       if (!metaExists(path)) {
         boolean result = metaPut(path, status);
@@ -1403,7 +1421,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @param path file path
    * @param newStatus file status
    */
-  private void metaUpdate(Path path, FileStatus newStatus) {
+  final void metaUpdate(Path path, FileStatus newStatus) {
     if (!metaCacheable) {
       return;
     }
@@ -1424,7 +1442,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * the call and distribute it to all affected
    * caching servers
    *********************************/
-  private void dataDeleteFile(Path path, FileStatus status) {
+  final void dataDeleteFile(Path path, FileStatus status) {
     if (status == null) {
       return;
     }
@@ -1822,9 +1840,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       boolean overwrite, int bufferSize, short replication, long blockSize,
       Progressable progress) throws IOException {
   
-    /*DEBUG*/ LOG.info("Sidecar create file: {}", f);
+    LOG.debug("Sidecar create file: {}", f);
     FSDataOutputStream remoteOut = 
-        ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, overwrite, bufferSize, replication, blockSize, progress);
+       ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, overwrite, bufferSize, 
+         replication, blockSize, progress);
     if (!this.writeCacheEnabled) {
       return remoteOut;
     }

@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem;
+import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
 
 public class TestSidecarCachingOutputStream {
   
@@ -67,7 +67,8 @@ public class TestSidecarCachingOutputStream {
   
   int ioBufferSize;
   
-  SidecarCachingFileSystem fs;
+  SidecarCachingFileSystem sidecar;
+  FileSystem testFS;
   
   static boolean skipTests ;
   
@@ -97,7 +98,7 @@ public class TestSidecarCachingOutputStream {
     this.cacheDirectory = createTempDirectory("carrot_cache").toUri();
     this.writeCacheDirectory = createTempDirectory("write_cache").toUri();
     try {
-      this.fs = cachingFileSystem(true);
+      this.sidecar = cachingFileSystem(true);
     } catch (Exception e) {
       LOG.error("setUp", e);
       fail();
@@ -137,19 +138,18 @@ public class TestSidecarCachingOutputStream {
     
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     
-    configuration.set("fs.file.impl", FileSidecarCachingFileSystem.class.getName());
+    configuration.set("fs.file.impl", SidecarLocalFileSystem.class.getName());
     configuration.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
     //configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_ENABLED_KEY, Boolean.TRUE.toString());
     configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_SIZE_KEY, Long.toString(writeCacheSize));
     configuration.set(SidecarConfig.SIDECAR_WRITE_CACHE_URI_KEY, writeCacheDirectory.toString());
     configuration.set(SidecarConfig.SIDECAR_TEST_MODE_KEY, Boolean.TRUE.toString());
     
-    FileSystem testingFileSystem = FileSystem.get(extDirectory, configuration);
-    testingFileSystem.setWorkingDirectory(new Path(extDirectory.toString()));
-    URI uri = new URI("carrot://test:8020/");
+    testFS = FileSystem.get(extDirectory, configuration);
+    testFS.setWorkingDirectory(new Path(extDirectory.toString()));
     // 
-    SidecarCachingFileSystem cachingFileSystem = SidecarCachingFileSystem.get(testingFileSystem);
-    cachingFileSystem.initialize(uri, configuration);
+    SidecarCachingFileSystem cachingFileSystem = 
+        ((RemoteFileSystemAccess) testFS).getCachingFileSystem();
     
     cachingFileSystem.setMetaCacheEnabled(true);
     // Verify initialization
@@ -165,14 +165,14 @@ public class TestSidecarCachingOutputStream {
   
   @Test
   public void testFileSystemWriteDelete() throws Exception {
-    Path basePath = fs.getRemoteFS().getWorkingDirectory();
+    Path basePath = testFS.getWorkingDirectory();
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     int num = 1000;
     for (int i = 0; i < num; i++) {
       Path p = new Path(basePath, Integer.toString(i));
       FSDataOutputStream os =
-          fs.create(p, null, true, 4096, (short) 1, dataCacheSegmentSize, null);
+          testFS.create(p, null, true, 4096, (short) 1, dataCacheSegmentSize, null);
 
       int size = 1 << 16; // 64 KB
       byte[] buf = new byte[size];
@@ -182,12 +182,11 @@ public class TestSidecarCachingOutputStream {
       os.write(buf);
       os.close();
       
-      //LOG.info("i= {} meta cache size={}", i, metaCache.activeSize());
       // Wait a bit
       // Read from caching FS
-      FileSystem cachingFS = fs.getWriteCacheFS();
-      FileSystem remoteFS = fs.getRemoteFS();
-      Path cachePath = fs.remoteToCachingPath(p);
+      FileSystem cachingFS = sidecar.getWriteCacheFS();
+      FileSystem remoteFS = sidecar.getRemoteFS();
+      Path cachePath = sidecar.remoteToCachingPath(p);
       FSDataInputStream cis = cachingFS.open(cachePath);
       byte[] bbuf = new byte[size];
       cis.readFully(bbuf);
@@ -195,21 +194,20 @@ public class TestSidecarCachingOutputStream {
       FSDataInputStream ris = remoteFS.open(p);
       ris.readFully(bbuf);
       assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
-      FSDataInputStream sis = fs.open(p, 4096);
+      FSDataInputStream sis = sidecar.open(p, 4096);
       sis.readFully(bbuf);
       assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
       // Close ALL
       cis.close();
       ris.close();
       sis.close();
-      os.close();
     }
     Thread.sleep(1000);
     
     // Last X files must be present in cache-on-write FS
     // Verify that no moniker files present in write caching FS
 
-    FileSystem cachingFS = fs.getWriteCacheFS();    
+    FileSystem cachingFS = sidecar.getWriteCacheFS();    
     FileStatus[] fss = cachingFS.listStatus(new Path(this.writeCacheDirectory.toString()), x -> 
         x.toString().endsWith(".toupload")
     );
@@ -220,7 +218,7 @@ public class TestSidecarCachingOutputStream {
     int total = 0;
     for (int i = num - 1; i >= 0; i--) {
       Path p = new Path(basePath, Integer.toString(i));
-      p = fs.remoteToCachingPath(p);
+      p = sidecar.remoteToCachingPath(p);
       try {
         cachingFS.getFileStatus(p);
         total ++;
@@ -235,7 +233,7 @@ public class TestSidecarCachingOutputStream {
     
     for (int i = 0; i < num; i++) {
       Path p = new Path(basePath, Integer.toString(i));
-      boolean result = fs.delete(p, false);
+      boolean result = sidecar.delete(p, false);
       assertTrue(result);
     }
     // wait a bit after delete
@@ -248,12 +246,12 @@ public class TestSidecarCachingOutputStream {
   
   @Test
   public void testFileSystemWriteRename() throws Exception {
-    Path basePath = fs.getRemoteFS().getWorkingDirectory();
+    Path basePath = testFS.getWorkingDirectory();
     int num = 100;
     for (int i = 0; i < num; i++) {
       Path p = new Path(basePath, Integer.toString(i));
       FSDataOutputStream os =
-          fs.create(p, null, true, 4096, (short) 1, dataCacheSegmentSize, null);
+          testFS.create(p, null, true, 4096, (short) 1, dataCacheSegmentSize, null);
 
       int size = 1 << 16; // 64 KB
       byte[] buf = new byte[size];
@@ -264,9 +262,9 @@ public class TestSidecarCachingOutputStream {
       os.close();
       // Wait a bit
       // Read from caching FS
-      FileSystem cachingFS = fs.getWriteCacheFS();
-      FileSystem remoteFS = fs.getRemoteFS();
-      Path cachePath = fs.remoteToCachingPath(p);
+      FileSystem cachingFS = sidecar.getWriteCacheFS();
+      FileSystem remoteFS = sidecar.getRemoteFS();
+      Path cachePath = sidecar.remoteToCachingPath(p);
       FSDataInputStream cis = cachingFS.open(cachePath);
       byte[] bbuf = new byte[size];
       cis.readFully(bbuf);
@@ -274,7 +272,7 @@ public class TestSidecarCachingOutputStream {
       FSDataInputStream ris = remoteFS.open(p);
       ris.readFully(bbuf);
       assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
-      FSDataInputStream sis = fs.open(p, 4096);
+      FSDataInputStream sis = sidecar.open(p, 4096);
       sis.readFully(bbuf);
       assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
       // Close ALL
@@ -285,11 +283,11 @@ public class TestSidecarCachingOutputStream {
     }
     Thread.sleep(1000);
     // Last X files must be present in cache-on-write FS
-    FileSystem cachingFS = fs.getWriteCacheFS();
+    FileSystem cachingFS = sidecar.getWriteCacheFS();
 
     for (int i = num - 1; i >= 0; i--) {
       Path p = new Path(basePath, Integer.toString(i));
-      p = fs.remoteToCachingPath(p);
+      p = sidecar.remoteToCachingPath(p);
       try {
         cachingFS.getFileStatus(p);
       } catch(FileNotFoundException e) {
@@ -298,10 +296,10 @@ public class TestSidecarCachingOutputStream {
       // OK, file exists in the write cache
       p = new Path(basePath, Integer.toString(i));
       Path newPath = new Path(p.toString() + "x");
-      boolean b = fs.rename(p, newPath);
+      boolean b = sidecar.rename(p, newPath);
       assertTrue(b);
       //
-      p = fs.remoteToCachingPath(p);
+      p = sidecar.remoteToCachingPath(p);
       try {
         // does not exists
         cachingFS.getFileStatus(p);
@@ -309,7 +307,7 @@ public class TestSidecarCachingOutputStream {
       } catch(FileNotFoundException e) {
       }
       // new path must exists
-      p = fs.remoteToCachingPath(newPath);
+      p = sidecar.remoteToCachingPath(newPath);
       try {
         // does  exists
         cachingFS.getFileStatus(p);
@@ -327,7 +325,7 @@ public class TestSidecarCachingOutputStream {
       Path p = new Path(basePath, Integer.toString(i));
       Path newPath = new Path(p.toString() + "x");
 
-      boolean result = fs.delete(newPath, false);
+      boolean result = sidecar.delete(newPath, false);
       assertTrue(result);
     }
 

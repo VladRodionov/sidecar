@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
+import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
 import com.carrot.sidecar.util.LRUCache;
 import com.esotericsoftware.kryo.kryo5.Kryo;
 import com.esotericsoftware.kryo.kryo5.io.Output;
@@ -247,8 +248,8 @@ public class TestSidecarCachingFileSystem {
 
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    assertTrue(metaCache.size() == 1);
-    assertTrue(cache.size() == 1);
+    assertTrue(metaCache.activeSize() == 1);
+    assertTrue(cache.activeSize() == 1);
     
     fs.delete(p, true);
     // wait a bit after delete
@@ -267,6 +268,10 @@ public class TestSidecarCachingFileSystem {
     FileSystem remoteFS = fs.getRemoteFS();
     Path workDir = remoteFS.getWorkingDirectory();
     Path p = new Path(workDir, "test-file");
+    Cache cache = SidecarCachingFileSystem.getDataCache();
+    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
+    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
+    LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);
     LOG.info("remote working directory {}", fs.getRemoteFS().getWorkingDirectory());
@@ -284,23 +289,24 @@ public class TestSidecarCachingFileSystem {
     // Wait a bit
     Thread.sleep(1000);
     byte[] bbuf = new byte[size];
+    LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
 
     // now read using sidecar FS - populate data cache
     FSDataInputStream sid = fs.open(p, size);
+    LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
+
     sid.readFully(bbuf);
     assertTrue(Utils.compareTo(buf, 0, buf.length, bbuf, 0, bbuf.length) == 0);
-    
+    LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
+
     sid.close();
-    
-    Cache cache = SidecarCachingFileSystem.getDataCache();
-    Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
-    
-    assertTrue(metaCache.size() == 1);
-    assertTrue(cache.size() == 1);
+    LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
+
+    assertTrue(metaCache.activeSize() == 1);
+    assertTrue(cache.activeSize() == 1);
     assertTrue(fifoCache.size() == 1);
     
-    assertTrue(metaCache.exists(p.toString().getBytes()));
+    assertTrue(fs.metaExists(p));
     Path pp = fs.remoteToCachingPath(p);
     assertTrue(fifoCache.get(pp.toString()) != null);
     
@@ -313,11 +319,11 @@ public class TestSidecarCachingFileSystem {
     cache = SidecarCachingFileSystem.getDataCache();
     metaCache = SidecarCachingFileSystem.getMetaCache();
     fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
-    assertTrue(metaCache.size() == 1);
-    assertTrue(cache.size() == 1);
+    assertTrue(metaCache.activeSize() == 1);
+    assertTrue(cache.activeSize() == 1);
     assertTrue(fifoCache.size() == 1);
     
-    assertTrue(metaCache.exists(p.toString().getBytes()));
+    assertTrue(fs.metaExists(p));
     pp = fs.remoteToCachingPath(p);
     assertTrue(fifoCache.get(pp.toString()) != null);
     
@@ -358,8 +364,8 @@ public class TestSidecarCachingFileSystem {
     
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    assertTrue(metaCache.size() == 1);
-    assertTrue(cache.size() == 1);
+    assertTrue(metaCache.activeSize() == 1);
+    assertTrue(cache.activeSize() == 1);
     
     Path dst = new Path(workDir, "test-file1");
     fs.rename(p, dst);
@@ -418,15 +424,13 @@ public class TestSidecarCachingFileSystem {
     
     Configuration configuration = TestUtils.getHdfsConfiguration(cacheConfig, carrotCacheConfig);
     String disableCacheName = "fs.file.impl.disable.cache";
-    
+    configuration.set("fs.file.impl", SidecarLocalFileSystem.class.getName());
     configuration.setBoolean(disableCacheName, true);
     
     FileSystem testingFileSystem = FileSystem.get(extDirectory, configuration);
     testingFileSystem.setWorkingDirectory(new Path(extDirectory.toString()));
-    URI uri = new URI("carrot://test:8020/");
-    // 
-    SidecarCachingFileSystem cachingFileSystem = SidecarCachingFileSystem.get(testingFileSystem);
-    cachingFileSystem.initialize(uri, configuration);
+    
+    SidecarCachingFileSystem cachingFileSystem = ((RemoteFileSystemAccess) testingFileSystem).getCachingFileSystem();
     cachingFileSystem.setMetaCacheEnabled(true);
     // Verify initialization
     Cache dataCache = SidecarCachingFileSystem.getDataCache();
