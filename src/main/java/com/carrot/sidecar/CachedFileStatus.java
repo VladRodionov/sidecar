@@ -30,7 +30,6 @@ import org.slf4j.LoggerFactory;
 public class CachedFileStatus extends FileStatus {
   
   private static final Logger LOG = LoggerFactory.getLogger(SidecarCachingFileSystem.class);  
-
   /**
    * Source file status
    */
@@ -39,7 +38,6 @@ public class CachedFileStatus extends FileStatus {
    * File System for the file
    */
   private RemoteFileSystemAccess remoteFs;
-  
   /**
    * Constructor
    * @param fs file system
@@ -103,11 +101,9 @@ public class CachedFileStatus extends FileStatus {
    */
   
   private synchronized void checkRemoteLoaded() {
-    
     if (this.source != null) {
       return;
     }
-    
     Path p = getPath();
     try {
       this.source = remoteFs.getFileStatusRemote(p);

@@ -89,7 +89,7 @@ public class SidecarCachingInputStream extends InputStream
   private long fileLength;
   
   /** Is this file cacheable */
-  private boolean isCacheable;
+  private boolean cacheOnRead;
   
   /** Key base for all data pages in this external file*/
   private byte[] baseKey;
@@ -127,7 +127,11 @@ public class SidecarCachingInputStream extends InputStream
   /** I/O buffer end offset in the file*/
   private long bufferEndOffset;
  
-  /** Current position of the stream, relative to the start of the file. */
+  /** 
+   * Current position of the stream, relative to the start of the file. 
+   * This position is the source of truth for write cache stream and for remote stream
+   * When read is non - positional 
+   * */
   private volatile long position = 0;
   
   /** Closed flag */
@@ -136,41 +140,29 @@ public class SidecarCachingInputStream extends InputStream
   /** End of file reached */
   private volatile boolean EOF = false;
   
-  /** Input stream statistics section */
-  
-  private long hits = 0;
-  
-  private long gets = 0;
-  
-  private long bytesReadFromRemote = 0;
-  
-  private long bytesReadFromWriteCache = 0;
-  
-  private long bytesReadFromDataCache = 0;
-    
   private byte[] one = new byte[1];
 
   private SidecarCachingFileSystem.Statistics stats;
   
   private ScanDetector sd;
-  
+    
   /**
    * Constructor 
    * @param cache parent cache
    * @param status file status
    * @param remoteStreamCall external input stream callable
-   * @param ccheStreamFuture cache input stream callable
+   * @param cacheStreamCall cache input stream callable
    * @param pageSize page size
    * @param bufferSize I/O buffer size (at least as large as page size)
    * @param stats statistics agent
    * @param sd scan detector to detect long scan operations
-   * @param isCacheable can cache?
+   * @param cacheOnRead can cache?
    */
   public SidecarCachingInputStream(Cache cache, FileStatus status, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall,
-       int pageSize, int bufferSize, Statistics stats, boolean isCacheable, ScanDetector sd) {
+       int pageSize, int bufferSize, Statistics stats, boolean cacheOnRead, ScanDetector sd) {
     this(cache, status.getPath(), remoteStreamCall, cacheStreamCall, status.getModificationTime(), 
-      status.getLen(), pageSize, bufferSize, stats, isCacheable, sd);
+      status.getLen(), pageSize, bufferSize, stats, cacheOnRead, sd);
   }
   
   /**
@@ -178,18 +170,18 @@ public class SidecarCachingInputStream extends InputStream
    * @param cache parent cache
    * @param path file path
    * @param remoteStreamCall external input stream callable
-   * @param ccheStreamFuture cache input stream callable
+   * @param cacheStreamCall cache input stream callable
    * @param modTime modification time
    * @param fileLength file length
    * @param pageSize page size
    * @param bufferSize I/O buffer size (at least as large as page size)
    * @param stats statistics agent
    * @param sd scan detector to detect long scan operations
-   * @param isCacheable can cache?
+   * @param cacheOnRead can cache?
    */
   public SidecarCachingInputStream(Cache cache, Path path, Callable<FSDataInputStream> remoteStreamCall, 
       Callable<FSDataInputStream> cacheStreamCall, long modTime, long fileLength,
-       int pageSize, int bufferSize, Statistics stats, boolean isCacheable, ScanDetector sd) {
+       int pageSize, int bufferSize, Statistics stats, boolean cacheOnRead, ScanDetector sd) {
     this.cache = cache;
     this.remoteStreamCallable = remoteStreamCall;
     this.cacheStreamCallable = cacheStreamCall;
@@ -207,10 +199,17 @@ public class SidecarCachingInputStream extends InputStream
     this.buffer = getIOBuffer();
     this.pageBuffer = getPageBuffer();
     this.stats = stats;
-    this.isCacheable = isCacheable;
+    this.cacheOnRead = cacheOnRead;
     this.sd = sd;
   }
   
+  /**
+   * Get statistics on this stream
+   * @return
+   */
+  public Statistics getStatistics() {
+    return this.stats;
+  }
   /**
    * Get file path
    * @return file path
@@ -218,44 +217,7 @@ public class SidecarCachingInputStream extends InputStream
   public Path getFilePath() {
     return this.path;
   }
-  
-  /**
-   * Approximate hit rate (used for testing)
-   * @return hit rate of the cache
-   */
-  public double getHitRate() {
-    return (double) (this.hits  - this.bhits)/ this.gets;
-  }
     
-  /**
-   * Total number read from Remote FS
-   * @return number of bytes
-   */
-  public long getReadFromRemoteFS() {
-    return this.bytesReadFromRemote;
-  }
-  
-  /**
-   * Total number read from Write Cache FS
-   * @return number of bytes
-   */
-  public long getReadFromWriteCacheFS() {
-    return this.bytesReadFromWriteCache;
-  }
-  /**
-   * Total number read from local data page cache
-   * @return number of bytes
-   */
-  public long getReadFromDataCache() {
-    return this.bytesReadFromDataCache;
-  }
-  
-  void resetCounters() {
-    this.bytesReadFromDataCache = 0;
-    this.bytesReadFromRemote = 0;
-    this.bytesReadFromWriteCache = 0;
-  }
-  
   /**
    * Get I/O buffer from the pool
    * @return buffer
@@ -306,6 +268,7 @@ public class SidecarCachingInputStream extends InputStream
     }
     long toSkip = Math.min(remaining(), n);
     position += toSkip;
+    //TODO: do we need to keep cache and remote stream in sync?
     getRemoteStream().skip(toSkip);
     this.cacheStream = getCacheStream();
     if (this.cacheStream != null) {
@@ -372,6 +335,8 @@ public class SidecarCachingInputStream extends InputStream
       EOF = false;
     }
     this.position = pos;
+    //TODO: do we need to keep streams in sync?
+    // We use only positional reads on these streams
     getRemoteStream().seek(pos);
     this.cacheStream = getCacheStream();
     if (this.cacheStream != null) {
@@ -387,7 +352,7 @@ public class SidecarCachingInputStream extends InputStream
   }
 
   @Override
-  public int available() throws IOException {
+  public synchronized int available() throws IOException {
     checkIfClosed();
     return (int) remaining();
   }
@@ -439,9 +404,7 @@ public class SidecarCachingInputStream extends InputStream
   @Override
   public synchronized void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
     checkIfClosed();
-    
-    this.stats.addTotalReadRequests(1);
-    
+        
     int totalBytesRead = 0;
     while (totalBytesRead < length) {
       int bytesRead =
@@ -452,9 +415,7 @@ public class SidecarCachingInputStream extends InputStream
         throw new EOFException();
       }
       totalBytesRead += bytesRead;
-    }
-    
-    this.stats.addTotalBytesRead(length);
+    }    
   }
 
   /**
@@ -466,11 +427,10 @@ public class SidecarCachingInputStream extends InputStream
    */
   @Override
   public boolean seekToNewSource(long targetPos) throws IOException {
-    throw new IOException("This method is not supported.");
+    throw new IOException("seekToNewSource method is not supported.");
   }
   
   /*** End of Public API **/
-  
   
   private long remaining() {
     return EOF ? 0 : this.fileLength - position;
@@ -503,35 +463,14 @@ public class SidecarCachingInputStream extends InputStream
     }
     buffer.position(offset);
     buffer.put(bytesBuffer, 0, totalBytesRead);
-    if (bytesBuffer.length == bufferSize) {
+    if (length <= bufferSize) {
       // release buffer back to the I/O pool
       ioPool.offer(bytesBuffer);
     }
     return totalBytesRead;
   }
 
-  private int bufferedRead(byte[] bytesBuffer, int offset, int length,
-                           long position) throws IOException {
-    if (this.buffer == null) { 
-      //buffer is disabled, read data from local cache directly.
-      // actually, should never happen
-      return localCachedRead(bytesBuffer, offset, length, position);
-    }
-    //hit or partially hit the in stream buffer
-    if (position >= this.bufferStartOffset && position < this.bufferEndOffset) {
-      int lengthToReadFromBuffer = (int) Math.min(length,
-          this.bufferEndOffset - position);
-      System.arraycopy(buffer, (int) (position - this.bufferStartOffset),
-          bytesBuffer, offset, lengthToReadFromBuffer);
-      this.stats.addTotalBytesReadPrefetch(lengthToReadFromBuffer);
-      this.stats.addTotalReadRequestsFromPrefetch(1);
-      return lengthToReadFromBuffer;
-    }
-    // OK, not in I/O buffer - read from cache (or load from external streams)
-    return localCachedRead(bytesBuffer, offset, length, position);
-  }
-
-  private int localCachedRead(byte[] bytesBuffer, int offset, int length, 
+  private int readCachedPage(byte[] bytesBuffer, int offset, int length, 
                               long position) throws IOException {
     long currentPage = position / this.pageSize;
    
@@ -561,7 +500,6 @@ public class SidecarCachingInputStream extends InputStream
         }
       }
       if (bytesRead > 0) {
-        this.bytesReadFromDataCache += bytesRead;
         this.stats.addTotalReadRequestsFromDataCache(1);
         this.stats.addTotalBytesReadDataCache(bytesRead);
         return bytesRead;
@@ -684,9 +622,7 @@ public class SidecarCachingInputStream extends InputStream
     }
     return n;
   }
-  
-  long bhits = 0;
-  
+    
   /******************************
    * 
    * Data cache API access
@@ -706,7 +642,7 @@ public class SidecarCachingInputStream extends InputStream
       byte[] value, int valueOffset, int valueSize, long fileOffset /* to detect scan*/)
     throws IOException
   {
-    if (!isCacheable) {
+    if (!cacheOnRead) {
       return false;
     }
     if (this.sd != null) {
@@ -714,7 +650,7 @@ public class SidecarCachingInputStream extends InputStream
       if (curOffset != fileOffset) {
         boolean scanDetected = sd.record(fileOffset);
         if (scanDetected) {
-          this.isCacheable = false;
+          this.cacheOnRead = false;
           this.stats.addTotalScansDetected(1);
           return false;
         }
@@ -724,6 +660,95 @@ public class SidecarCachingInputStream extends InputStream
   }
   
   /*****************************/
+  
+  private int readFromPrefetchBuffer(byte[] bytesBuffer, int offset, int length,
+      long position) {
+    //hit or partially hit the in stream buffer
+    if (position >= this.bufferStartOffset && position < this.bufferEndOffset) {
+      int lengthToReadFromBuffer = (int) Math.min(length,
+          this.bufferEndOffset - position);
+      System.arraycopy(buffer, (int) (position - this.bufferStartOffset),
+          bytesBuffer, offset, lengthToReadFromBuffer);
+      this.stats.addTotalBytesReadPrefetch(lengthToReadFromBuffer);
+      this.stats.addTotalReadRequestsFromPrefetch(1);
+      return lengthToReadFromBuffer;
+    }
+    return -1;
+  }
+  
+  private void cacheDataFromPrefetchBuffer(Range pageRange) throws IOException {
+    if (!cacheOnRead) {
+      return;
+    }
+    for(long pos = pageRange.start; pos < pageRange.start + pageRange.size; pos+= pageSize) {
+      int size = (int) Math.min(pageSize, pageRange.start + pageRange.size - pos);
+      if (insidePrefetchBuffer(pos, size)) {
+        byte[] key = getKey(this.baseKey, pos, this.pageSize);
+        long fileOffset = pos / pageSize * pageSize;
+        if (!dataPageExists(key)) {
+          dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), 
+            size, fileOffset);
+        }
+      }
+    }
+  }
+  
+  private boolean insidePrefetchBuffer(long pos, int size) {
+    return pos >= bufferStartOffset && (pos + size < bufferEndOffset);
+  }
+
+  private int readFromCache(byte[] bytesBuffer, int offset, int length, long position,
+      boolean isPositionedRead, Range pageRange, boolean[] in_cache) throws IOException {
+    boolean fullCache = count(in_cache) == in_cache.length;
+    if (fullCache) {
+      // Basically reads data from the cache, but in case if any page is missing it will be
+      // loaded from other sources (write cache or remote FS)
+      // this can happen sometimes (rarely)
+      return fullyReadFromCache(bytesBuffer, offset, length, position, isPositionedRead);
+    }
+    // Some pages (or all of them) are missing
+    boolean[] in_buffer = inBuffer(pageRange);
+    boolean[] union = union(in_cache, in_buffer);
+    fullCache = count(union) == union.length;
+    if (fullCache) {
+      // Rest pages are in the buffer - we have to cache them
+      boolean[] diff = diff(in_cache, in_buffer);
+      long pos = pageRange.start;
+      for (int i = 0; i < diff.length; i++) {
+        if (diff[i]) {
+          byte[] key = getKey(this.baseKey, pos, this.pageSize);
+          int size = (int) Math.min(this.pageSize, this.bufferEndOffset - pos);
+          long fileOffset = pos / pageSize * pageSize;
+          dataPagePut(key, 0, key.length, this.buffer, (int) (pos - this.bufferStartOffset), size,
+            fileOffset);
+        }
+        pos += this.pageSize;
+      }
+      // Now we have everything in the cache
+      // TODO: performance optimization
+      // double read/write
+      return fullyReadFromCache(bytesBuffer, offset, length, position, isPositionedRead);
+    }
+    return -1;
+  }
+  
+  
+  private byte[] getBuffer(int size) {
+    byte[] buf = null;
+    if (this.buffer.length >= size) {
+      // Read ALL into I/O buffer
+      buf = this.buffer;
+    } else {
+      int len = (int) size;
+      buf = new byte[len];
+      // TODO: analyze
+      this.buffer = buf;
+      this.bufferStartOffset = 0;
+      this.bufferEndOffset = 0;
+    }
+    return buf;
+  }
+  
   /**
    * Read internal
    * @param bytesBuffer
@@ -740,65 +765,48 @@ public class SidecarCachingInputStream extends InputStream
     // Adjust length
     // just in case
     length = (int) Math.min(length,  this.fileLength - position);
-    this.gets++;
     Range pageRange = getPageRange(position, length);
-    boolean[] in_cache = inCache(pageRange);
-    boolean fullCache = count(in_cache) == in_cache.length;
-    if (fullCache) {
-      this.hits++;
-      // Basically reads data from the cache, but in case if any page is missing it will be 
-      // loaded from other sources (write cache or remote FS)
-      // this can happen sometimes (rarely)
-      return readInternal0(bytesBuffer, offset, length, position, isPositionedRead);
-    }
-    // Some pages (or all of them) are missing
-    boolean[] in_buffer = inBuffer(pageRange);
-    boolean[] union = union(in_cache, in_buffer);
-    fullCache = count(union) == union.length;
-    if (fullCache) {
-      this.hits++;
-      this.bhits ++;
-      // Rest pages are in the buffer - we have to cache them
-      boolean[] diff = diff(in_cache, in_buffer);
-      long pos = pageRange.start;
-      for (int i = 0; i < diff.length; i++) {
-        if (diff[i]) {
-          byte[] key = getKey(this.baseKey, pos, this.pageSize);
-          int size = (int) Math.min(this.pageSize, this.bufferEndOffset - pos);
-          long fileOffset = pos /pageSize * pageSize;
-          dataPagePut(key, 0, key.length, this.buffer, (int)(pos - this.bufferStartOffset), 
-            size, fileOffset);
-        }
-        pos += this.pageSize;
+    // Try prefetch buffer first
+    int read = readFromPrefetchBuffer(bytesBuffer, offset, length, position);
+    if (read > 0) {
+      cacheDataFromPrefetchBuffer(pageRange);
+      if (!isPositionedRead) {
+        this.position += read;
       }
-      // Now we have everything in the cache
-      //TODO: performance optimization
-      // double read/write
-      return readInternal0(bytesBuffer, offset, length, position, isPositionedRead);
+      return read;
+    }
+    // Now try page cache
+    boolean[] in_cache = inCache(pageRange);
+    read = readFromCache(bytesBuffer, offset, length, position, 
+                          isPositionedRead, pageRange, in_cache);
+    if (read > 0) {
+      return read;
     }
     // Some pages are neither in the cache nor in the I/O buffer - read ALL from write cache FS
     // or from remote FS
-    byte[] buf = null;
-    if (this.buffer.length >= pageRange.size) {
-      // Read ALL into I/O buffer
-      buf = this.buffer;
-    } else {
-      int len = (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
-      buf = new byte[len];
-      // TODO: analyze
-      this.buffer = buf;
-    }
+    byte[] buf = getBuffer((int)pageRange.size);
     
-    int toRead = buf == this.buffer? (int) Math.min(this.buffer.length, this.fileLength - pageRange.start): buf.length;
-    
+    // For positional reads we read only what is required
+    // For non-positional we do prefetching
+    int toRead = !isPositionedRead  ? 
+        (int) Math.min(buf.length, this.fileLength - pageRange.start): 
+          (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
+            
     //TODO: handle prefetching in external sources
     // We need 'length' of data, but can read more than that
     // if read is not positioned - we can not advance position by 'toRead' bytes 
-    int read = readFullyFromWriteCache(pageRange.start, buf, 0, toRead, isPositionedRead, length);
+    
+    //FIXME: this is efficiently positional reads
+    // in case of streaming access can be expensive
+    read = readFullyFromWriteCacheFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
     if (read < 0) {
-      read = readFullyFromRemote(pageRange.start, buf, 0, toRead, isPositionedRead, length);
+      read = readFullyFromRemoteFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
     }
-    // Save to the read cache
+    //TODO: check on read > 0?
+    this.bufferStartOffset = pageRange.start;
+    this.bufferEndOffset = pageRange.start + read;
+    
+    // Save to the page cache
     long pos = pageRange.start;
     for (int i = 0; i < in_cache.length; i++) {
       if (!in_cache[i]) {
@@ -824,6 +832,21 @@ public class SidecarCachingInputStream extends InputStream
     return length;
   }
   
+//  private void syncPosition() throws IOException {
+//    getRemoteStream().seek(this.position);
+//    FSDataInputStream cacheStream = getCacheStream();
+//    if (cacheStream != null) {
+//      try {
+//        cacheStream.seek(this.position);
+//      } catch (IOException e) {
+//        // TODO: better handling exception
+//        LOG.error("Cached input stream readInternal0", e);
+//        this.cacheStreamCallable = null;
+//        this.cacheStream = null;
+//      }
+//    }
+//  }
+  
   /**
    * This in fact reads from read cache
    * @param bytesBuffer buffer to read data to
@@ -834,8 +857,9 @@ public class SidecarCachingInputStream extends InputStream
    * @return number of bytes read
    * @throws IOException
    */
-  private int readInternal0(byte[] bytesBuffer, int offset, int length,
+  private int fullyReadFromCache(byte[] bytesBuffer, int offset, int length,
                            long position, boolean isPositionedRead) throws IOException {
+    // Most of the time this is a read from page cache
     checkArgument(length >= 0, "length should be non-negative");
     checkArgument(offset >= 0, "offset should be non-negative");
     checkArgument(position >= 0, "position should be non-negative");
@@ -851,7 +875,7 @@ public class SidecarCachingInputStream extends InputStream
     long lengthToRead = Math.min(length, this.fileLength - position);
     int bytesRead = 0;
     while (totalBytesRead < lengthToRead) {
-      bytesRead = bufferedRead(bytesBuffer, offset + totalBytesRead,
+      bytesRead = readCachedPage(bytesBuffer, offset + totalBytesRead,
           (int) (lengthToRead - totalBytesRead), currentPosition);
       totalBytesRead += bytesRead;
       currentPosition += bytesRead;
@@ -859,21 +883,7 @@ public class SidecarCachingInputStream extends InputStream
         this.position = currentPosition;
       }
     }
-    // Update position of the external stream
-    if (!isPositionedRead) {
-      getRemoteStream().seek(this.position);
-      FSDataInputStream cacheStream = getCacheStream();
-      if (cacheStream != null) {
-        try {
-          cacheStream.seek(this.position);
-        } catch (IOException e) {
-          //TODO: better handling exception
-          LOG.error("Cached input stream readInternal0", e);
-          this.cacheStreamCallable = null;
-          this.cacheStream = null;
-        }
-      }
-    }
+
     if (totalBytesRead > length
         || (totalBytesRead < length && currentPosition < this.fileLength)) {
       throw new IOException(String.format("Invalid number of bytes read - "
@@ -912,7 +922,6 @@ public class SidecarCachingInputStream extends InputStream
       throw new IOException(e);
     }
   }
-  
   /**
    * Convenience method to ensure the stream is not closed.
    */
@@ -934,7 +943,6 @@ public class SidecarCachingInputStream extends InputStream
       }
       totalBytesRead += bytesRead;
     }
- 
     if (totalBytesRead != pageSize) {
       throw new IOException("Failed to read page from external storage. Bytes read: "
           + totalBytesRead + " Page size: " + pageSize);
@@ -943,26 +951,25 @@ public class SidecarCachingInputStream extends InputStream
   }
 
   private int readExternalPage(long offset, byte[] buffer, int bufOffset, int len) throws IOException {
-    int read = readFromWriteCache(offset, buffer, bufOffset, len);
+    int read = readFromWriteCacheFS(offset, buffer, bufOffset, len);
     if (read > 0) {
       return read;
     }
-    return readFromRemote(offset, buffer, bufOffset, len);
+    return readFromRemoteFS(offset, buffer, bufOffset, len);
   }
   
-  private int readFromRemote(long position, byte[] buffer, int bufOffset, int len)
+  private int readFromRemoteFS(long position, byte[] buffer, int bufOffset, int len)
       throws IOException {
     FSDataInputStream is = getRemoteStream();
     int read = is.read(position, buffer, bufOffset, len);
     if (read > 0) {
-      this.bytesReadFromRemote += read;
       this.stats.addTotalReadRequestsFromRemote(1);
       this.stats.addTotalBytesReadRemote(read);
     }
     return read;
   }
   
-  private int readFromWriteCache(long position, byte[] buffer, int bufOffset, int len) {
+  private int readFromWriteCacheFS(long position, byte[] buffer, int bufOffset, int len) {
     int read = -1;
     if (this.cacheStreamCallable == null) {
       return read;//
@@ -975,7 +982,6 @@ public class SidecarCachingInputStream extends InputStream
       }
       read = is.read(position, buffer, bufOffset, len);
       if (read > 0) {
-        this.bytesReadFromWriteCache += read;
         this.stats.addTotalReadRequestsFromWriteCache(1);
         this.stats.addTotalBytesReadWriteCache(read);
       }
@@ -992,39 +998,28 @@ public class SidecarCachingInputStream extends InputStream
     return -1;
   }
   
-  private int readFullyFromRemote(long position, byte[] buffer, int bufOffset, 
+  private int readFullyFromRemoteFS(long position, byte[] buffer, int bufOffset, 
       int len, boolean isPositionedRead, int toAdvance)
       throws IOException {
     FSDataInputStream is = getRemoteStream();
-    long pos = is.getPos();
     is.readFully(position, buffer, bufOffset, len);
-    if (!isPositionedRead) {
-      is.seek(pos + toAdvance);
-    }
-    this.bytesReadFromRemote += len;
     this.stats.addTotalReadRequestsFromRemote(1);
     this.stats.addTotalBytesReadRemote(len);
     return len;
   }
   
-  private int readFullyFromWriteCache(long position, byte[] buffer, int bufOffset, 
+  private int readFullyFromWriteCacheFS(long position, byte[] buffer, int bufOffset, 
       int len, boolean isPositionedRead, int toAdvance) {
     if (this.cacheStreamCallable == null) {
       return -1;//
     }
     FSDataInputStream is = null;
-    try {
-      
+    try { 
       is = getCacheStream();
       if (is == null) {
         return -1;
       }
-      long pos = is.getPos();
       is.readFully(position, buffer, bufOffset, len);
-      if (!isPositionedRead) {
-        is.seek(pos + toAdvance);
-      }
-      this.bytesReadFromWriteCache += len;
       this.stats.addTotalReadRequestsFromWriteCache(1);
       this.stats.addTotalBytesReadWriteCache(len);
       return len;

@@ -1119,8 +1119,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (sconfig.isJMXMetricsEnabled()) {
       LOG.info("SidecarCachingFileSystem JMX enabled for meta-data cache");
       String domainName = sconfig.getJMXMetricsDomainName();
-      //String mtype = this.remoteURI.toString();
-      //mtype = mtype.replace(":", "-");
       metaCache.registerJMXMetricsSink(domainName);
     }  
   }
