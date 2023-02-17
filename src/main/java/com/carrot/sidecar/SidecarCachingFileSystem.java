@@ -56,6 +56,7 @@ import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
+import org.apache.hadoop.fs.Options.ChecksumOpt;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -1890,7 +1891,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     Path cachePath = remoteToCachingPath(f);
     FSDataOutputStream cacheOut = null;
     try {
-        cacheOut = this.writeCacheFS.create(cachePath, overwrite, bufferSize, replication, blockSize);
+        cacheOut = this.writeCacheFS.create(cachePath, permission, overwrite, bufferSize, replication,
+          blockSize, null);
     } catch (IOException e) {
       LOG.error("Write cache create file failed", e);
       return remoteOut;
@@ -1901,6 +1903,32 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
   
+  public FSDataOutputStream create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,
+      int bufferSize, short replication, long blockSize, Progressable progress,
+      ChecksumOpt checksumOpt) throws IOException {
+    
+    LOG.debug("Sidecar create file: {}", f);
+    FSDataOutputStream remoteOut = 
+       ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, cflags, bufferSize, 
+         replication, blockSize, progress, checksumOpt);
+    if (!this.writeCacheEnabled) {
+      return remoteOut;
+    }
+    
+    Path cachePath = remoteToCachingPath(f);
+    FSDataOutputStream cacheOut = null;
+    try {
+        cacheOut = this.writeCacheFS.create(cachePath, permission, cflags, bufferSize, replication,
+          blockSize, null);
+    } catch (IOException e) {
+      LOG.error("Write cache create file failed", e);
+      return remoteOut;
+    }
+
+    // Create file moniker
+    createMoniker(cachePath);
+    return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
+  }
   public boolean mkdirs(Path path, FsPermission permission)
       throws IOException, FileAlreadyExistsException {
     LOG.debug("Create dir: {}", path);

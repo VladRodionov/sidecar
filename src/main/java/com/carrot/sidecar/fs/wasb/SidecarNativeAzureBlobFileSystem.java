@@ -30,6 +30,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.Options.ChecksumOpt;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.azure.NativeAzureFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -176,5 +177,12 @@ public class SidecarNativeAzureBlobFileSystem extends NativeAzureFileSystem
   @Override
   public FileStatus getFileStatusRemote(Path p) throws IOException {
     return super.getFileStatus(p);
+  }
+  
+  @Override
+  public FSDataOutputStream createRemote(Path f, FsPermission permission,
+      EnumSet<CreateFlag> cflags, int bufferSize, short replication, long blockSize,
+      Progressable progress, ChecksumOpt checksumOpt) throws IOException{
+    return super.create(f, permission, cflags, bufferSize, replication, blockSize, progress, checksumOpt);
   }
 }

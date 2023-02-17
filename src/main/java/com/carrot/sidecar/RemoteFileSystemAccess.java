@@ -25,6 +25,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.Options.ChecksumOpt;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -158,5 +159,22 @@ public interface RemoteFileSystemAccess {
    */
   public boolean mkdirsRemote(Path path, FsPermission permission)
       throws IOException, FileAlreadyExistsException;
+
+  /**
+   * Create file remote
+   * @param f file path
+   * @param permission file permission
+   * @param cflags create flags
+   * @param bufferSize buffer size
+   * @param replication replication
+   * @param blockSize block size
+   * @param progress progress
+   * @param checksumOpt checksum 
+   * @return data output stream
+   * @throws IOException 
+   */
+  public FSDataOutputStream createRemote(Path f, FsPermission permission,
+      EnumSet<CreateFlag> cflags, int bufferSize, short replication, long blockSize,
+      Progressable progress, ChecksumOpt checksumOpt) throws IOException;
 
 }

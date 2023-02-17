@@ -103,10 +103,10 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
       int bufferSize, short replication, long blockSize, Progressable progress,
       ChecksumOpt checksumOpt) throws IOException {
     // This
-    LOG.error("***Sidecar CREATE(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,\n"
-        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
-        + "      ChecksumOpt checksumOpt)");
-    return super.create(f, permission, cflags, bufferSize, replication, blockSize, progress,
+//    LOG.error("***Sidecar CREATE(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,\n"
+//        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
+//        + "      ChecksumOpt checksumOpt)");
+    return sidecar.create(f, permission, cflags, bufferSize, replication, blockSize, progress,
       checksumOpt);
   }
 
@@ -179,6 +179,9 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
     sidecar.close();
   }
 
+  /**
+   *  RemoteFileSystemAccess API
+   */
   @Override
   public SidecarCachingFileSystem getCachingFileSystem() {
     return sidecar;
@@ -195,7 +198,7 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
     return super.create(f, permission, overwrite,
       bufferSize, replication, blockSize, progress) ;
   }
-
+  
   @Override
   public FSDataOutputStream createNonRecursiveRemote(Path path, FsPermission permission,
       EnumSet<CreateFlag> flags, int bufferSize, short replication, long blockSize,
@@ -240,5 +243,12 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   @Override
   public FileStatus getFileStatusRemote(Path p) throws IOException {
     return super.getFileStatus(p);
+  }
+
+  @Override
+  public FSDataOutputStream createRemote(Path f, FsPermission permission,
+      EnumSet<CreateFlag> cflags, int bufferSize, short replication, long blockSize,
+      Progressable progress, ChecksumOpt checksumOpt) throws IOException{
+    return super.create(f, permission, cflags, bufferSize, replication, blockSize, progress, checksumOpt);
   }
 }
