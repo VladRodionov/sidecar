@@ -45,4 +45,14 @@ public class SidecarSiteJMXSink implements SidecarSiteJMXSinkMBean{
     return "";
   }
 
+  @Override
+  public long getwrite_cache_bytes_written() {
+    return SidecarCachingFileSystem.getWriteCacheBytesWritten();
+  }
+
+  @Override
+  public long getdata_set_size_disk() {
+    return SidecarCachingFileSystem.getDataSetSizeOnDisk();
+  }
+
 }

@@ -25,7 +25,11 @@ public interface SidecarSiteJMXSinkMBean {
   double getwrite_cache_used_ratio();
 
   long getwrite_cache_number_files();
+  
+  long getwrite_cache_bytes_written();
 
   int getpending_io_tasks();
+  
+  long getdata_set_size_disk();
 
 }

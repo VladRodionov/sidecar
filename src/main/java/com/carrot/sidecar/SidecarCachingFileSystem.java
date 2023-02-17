@@ -494,6 +494,16 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   static AtomicLong writeCacheSize = new AtomicLong();
   
+  /**
+   * Write cache bytes written
+   */
+  static AtomicLong writeCacheBytesWritten = new AtomicLong();
+  
+  /**
+   * Data set size on disk
+   */
+  static AtomicLong dataSetSizeOnDisk = new AtomicLong();
+  
   /*
    * File eviction thread (from cache-on-write cache)
    */
@@ -647,6 +657,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   public static int getTaskQueueSize() {
     return taskQueue.size();
+  }
+  
+  /**
+   * Get total data size written to the write cache 
+   * @return total data size
+   */
+  public static long getWriteCacheBytesWritten() {
+    return writeCacheBytesWritten.get();
+  }
+  
+  /**
+   * Get data set size for this server instance
+   * @return data set size
+   */
+  public static long getDataSetSizeOnDisk() {
+    return dataSetSizeOnDisk.get();
   }
   
   /**
@@ -1046,7 +1072,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
       DataInputStream dis = new DataInputStream(fis);
-      writeCacheSize.set(dis.readLong());
       writeCacheFileList.load(dis);
       dis.close();
       LOG.info("Loaded cache[{}]", LRUCache.NAME);
@@ -1066,6 +1091,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
       DataInputStream dis = new DataInputStream(fis);
+      // Write cache
+      writeCacheSize.set(dis.readLong());
+      writeCacheBytesWritten.set(dis.readLong());
+      dataSetSizeOnDisk.set(dis.readLong());
+      // General
       this.stats.load(dis);
       dis.close();
       LOG.info("Loaded sidecar sidecar.stats");
@@ -1083,6 +1113,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
     FileOutputStream fos = new FileOutputStream(file);
     DataOutputStream dos = new DataOutputStream(fos);
+    // Write cache
+    dos.writeLong(writeCacheSize.get());
+    dos.writeLong(writeCacheBytesWritten.get());  
+    dos.writeLong(dataSetSizeOnDisk.get());
+    // General
     this.stats.save(dos);
     dos.close();
     LOG.info("Saved sidecar sidecar.stats");
@@ -1178,7 +1213,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       File.separator + LRUCache.FILE_NAME);
       // Save total write cache size
       DataOutputStream dos = new DataOutputStream(fos);
-      dos.writeLong(writeCacheSize.get());
       writeCacheFileList.save(dos);
       // do not close - it was closed already
       long end = System.currentTimeMillis();
@@ -1475,6 +1509,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public void bytesWritten(SidecarCachingOutputStream stream, long bytes) {
     if (isWriteCacheEnabled()) {
       writeCacheSize.addAndGet(bytes);
+      writeCacheBytesWritten.addAndGet(bytes);
       checkEviction();
     }
   }
@@ -1493,7 +1528,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.error("Remote stream getPos() failed {}", e);
     }
     /*DEBUG*/LOG.info("Closing remote {} len={}", path, length);
-
+    // Update data set size
+    dataSetSizeOnDisk.addAndGet(length);
+    
     if (writeCacheEnabled) {
       // It is save to update meta first in the cache
       // because write cache has already file ready to read
@@ -2048,7 +2085,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Delete {} recursive={}", f, recursive);
     FileStatus status = metaGet(f);
     boolean result = ((RemoteFileSystemAccess)remoteFS).deleteRemote(f, recursive);
-    
+    if (status != null) {
+      dataSetSizeOnDisk.addAndGet(-status.getLen());
+    }
     if (result) {
       this.stats.addTotalFilesDeleted(1);
     }
