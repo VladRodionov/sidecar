@@ -1940,7 +1940,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (!this.writeCacheEnabled) {
       return remoteOut;
     }
-    
     Path cachePath = remoteToCachingPath(path);
     FSDataOutputStream cacheOut = null;
     try {
@@ -1949,7 +1948,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.error("Write cache create file failed", e);
       return remoteOut;
     }
-    
     // Create file moniker
     createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
@@ -1968,7 +1966,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (!this.writeCacheEnabled) {
       return remoteOut;
     }
-    
     Path cachePath = remoteToCachingPath(path);
     FSDataOutputStream cacheOut = null;
     try {
@@ -1977,11 +1974,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.error("Write cache create file failed", e);
       return remoteOut;
     }
-    
     // Create file moniker
     createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
   }
+  
   @SuppressWarnings("deprecation")
   public FSDataOutputStream append(Path f, int bufferSize, Progressable progress)
       throws IOException {
@@ -1994,7 +1991,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       return remoteOut;
     }
     Path cachePath = remoteToCachingPath(f);
-    
     FSDataOutputStream cacheOut = null;
     try {
       cacheOut = this.writeCacheFS.append(cachePath, bufferSize);
@@ -2075,7 +2071,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           if (res) {
             // Remove from write-cache file list
             Long len = writeCacheFileList.remove(cacheSrc.toString());
-            writeCacheFileList.put(cacheDst.toString(), len);
+            if (len != null) {
+              writeCacheFileList.put(cacheDst.toString(), len);
+            }
           }
         }
       } catch (IOException e) {

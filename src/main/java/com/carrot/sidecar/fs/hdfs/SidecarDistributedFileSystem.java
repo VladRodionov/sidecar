@@ -35,6 +35,7 @@ import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
 import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,14 +112,31 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
 
   @Override
   public HdfsDataOutputStreamBuilder createFile(Path path) {
-    LOG.error("***Sidecar createFile(Path path)");
+    LOG.error("***Sidecar CREATEFILE(Path path)");
     return super.createFile(path);
   }
 
   @Override
   public HdfsDataOutputStreamBuilder appendFile(Path path) {
-    LOG.error("***Sidecar appendFile(Path path)");
+    LOG.error("***Sidecar APPENDFILE(Path path)");
     return super.appendFile(path);
+  }
+
+  @Override
+  public HdfsDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
+      int bufferSize, short replication, long blockSize, Progressable progress,
+      InetSocketAddress[] favoredNodes) throws IOException {
+    LOG.error("***Sidecar HdfsDataOutputStream CREATE(Path f, FsPermission permission, boolean overwrite,\n"
+        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
+        + "      InetSocketAddress[] favoredNodes)");
+    return super.create(f, permission, overwrite, bufferSize, replication, blockSize, progress,
+      favoredNodes);
+  }
+
+  @Override
+  public void concat(Path trg, Path[] psrcs) throws IOException {
+    LOG.error("***Sidecar CONCAT(Path trg, Path[] psrcs)");
+    super.concat(trg, psrcs);
   }
 
   @Override
