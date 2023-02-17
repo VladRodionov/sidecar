@@ -1283,6 +1283,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
     if (storageOccupied > writeCacheEvictionStartsAt) {
       LOG.debug("checkEviction storage={}", storageOccupied);
+      if (writeCacheFileList.size() == 0) {
+        // Wait until first file be available
+        return;
+      }
       Thread t = evictor.get();
       if (t != null && t.isAlive()) {
         return ; // eviction is in progress
