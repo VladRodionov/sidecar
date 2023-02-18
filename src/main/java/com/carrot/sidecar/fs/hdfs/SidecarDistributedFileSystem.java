@@ -77,12 +77,6 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   }
 
   @Override
-  public FSDataOutputStream create(Path f, FsPermission permission, boolean overwrite,
-      int bufferSize, short replication, long blockSize, Progressable progress) throws IOException {
-    return sidecar.create(f, permission, overwrite, bufferSize, replication, blockSize, progress);
-  }
-
-  @Override
   public FSDataOutputStream append(Path f, EnumSet<CreateFlag> flag, int bufferSize,
       Progressable progress) throws IOException {
     LOG.error("***Sidecar APPEND(Path f, EnumSet<CreateFlag> flag, int bufferSize,\n"
@@ -102,10 +96,6 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
   public FSDataOutputStream create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,
       int bufferSize, short replication, long blockSize, Progressable progress,
       ChecksumOpt checksumOpt) throws IOException {
-    // This
-//    LOG.error("***Sidecar CREATE(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,\n"
-//        + "      int bufferSize, short replication, long blockSize, Progressable progress,\n"
-//        + "      ChecksumOpt checksumOpt)");
     return sidecar.create(f, permission, cflags, bufferSize, replication, blockSize, progress,
       checksumOpt);
   }
