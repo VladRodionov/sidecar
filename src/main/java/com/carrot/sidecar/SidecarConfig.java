@@ -108,6 +108,8 @@ public class SidecarConfig extends Properties {
    */
   public final static String SIDECAR_SCAN_DETECTOR_ENABLED_KEY = "sidecar.scan.detector.enabled";
   
+  public final static String SIDECAR_WRITE_CACHE_EXCLUDE_LIST_KEY = "sidecar.write.cache.exclude.list";
+  
   /**
    * Sidecar scan detector threshold in data pages
    */
@@ -146,6 +148,8 @@ public class SidecarConfig extends Properties {
   public final static boolean DEFAULT_SIDECAR_SCAN_DETECTOR_ENABLED = false;
   
   public final static int DEFAULT_SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES = 10;
+  
+  public final static String DEFAULT_SIDECAR_WRITE_CACHE_EXCLUDE_LIST = "";
   
   private static SidecarConfig instance;
   
@@ -633,4 +637,26 @@ public class SidecarConfig extends Properties {
     setProperty(SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY, Integer.toString(value));
     return this;
   }
+  
+  /**
+   * Get write cache exclude list
+   * @return list
+   */
+  public String[] getWriteCacheExcludeList() {
+    String v = getProperty(SIDECAR_WRITE_CACHE_EXCLUDE_LIST_KEY, DEFAULT_SIDECAR_WRITE_CACHE_EXCLUDE_LIST);
+    String[] parts = v.split(",");
+    Arrays.stream(parts).forEach(x -> x.trim());
+    return parts;
+  }
+  
+  /**
+   * Set write cache exclude list
+   * @param list exclude list
+   * @return self
+   */
+  public SidecarConfig setWriteCacheExcludeList(String list) {
+    setProperty(SIDECAR_WRITE_CACHE_EXCLUDE_LIST_KEY, list);
+    return this;
+  }
+  
 }

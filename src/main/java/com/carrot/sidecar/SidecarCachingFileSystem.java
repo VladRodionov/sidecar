@@ -44,6 +44,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -515,6 +517,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    */
   static URI writeCacheURI;
   
+  /**
+   * Write cache exclude list regex patterns
+   */
+  static Pattern[] writeCacheExclude;
+  
   /*
    *  Data page size for data cache 
    */
@@ -905,6 +912,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       synchronized (getClass()) {
         if (dataCache == null) {
           writeCacheURI = sconfig.getWriteCacheURI();
+          
+          initWriteCacheLists(sconfig);
+          
           SidecarCachingInputStream.initIOPools(this.ioPoolSize);
           loadDataCache();
           loadMetaCache();
@@ -945,18 +955,36 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
                 "sidecar-thread-pool"));
         }
       }
-      
       loadWriteCacheFileListCache();
       loadStatistics();
       activateJMXSinks();
       this.inited = true;
- 
     } catch (Throwable e) {
       LOG.error(e.getMessage(), e);
       throw new IOException(e);
     }
   }
 
+  private void initWriteCacheLists(SidecarConfig sconfig) {
+    String[] patterns = sconfig.getWriteCacheExcludeList();
+    if (patterns.length > 0) {
+      writeCacheExclude = new Pattern[patterns.length];
+      for (int i = 0; i < patterns.length; i++) {
+        writeCacheExclude[i] = Pattern.compile(patterns[i]);
+      }
+    }
+  }
+ 
+  private boolean inExcludeList(String path) {
+    for(Pattern p: writeCacheExclude) {
+      Matcher m = p.matcher(path);
+      if (m.matches()) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
   private void activateJMXSinks() {
     SidecarConfig sconfig = SidecarConfig.getInstance();
     if (sconfig.isJMXMetricsEnabled()) {
@@ -1626,7 +1654,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return this.writeCacheFS.delete(p, false);
   }
   
-  
   private boolean isFile(Path p) throws IOException {
     boolean result;
     //TODO: is this correct?
@@ -1641,13 +1668,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
     return result;
   }
-  
-  
+ 
   /**
    * File eviction from write cache
    * @throws IOException 
-   */
-  
+   */  
   private void evictFiles() throws IOException {
     if (!this.writeCacheEnabled) {
       return;
@@ -1884,7 +1909,12 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataOutputStream remoteOut = 
        ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, overwrite, bufferSize, 
          replication, blockSize, progress);
-    if (!this.writeCacheEnabled) {
+    
+    boolean exclude = inExcludeList(f.toString());
+    if (exclude) {
+      /*DEBUG*/ LOG.error("Create: found write cache exclude {}", f);
+    }
+    if (!this.writeCacheEnabled || exclude) {
       return remoteOut;
     }
     
@@ -1903,6 +1933,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
   
+  @SuppressWarnings("deprecation")
   public FSDataOutputStream create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,
       int bufferSize, short replication, long blockSize, Progressable progress,
       ChecksumOpt checksumOpt) throws IOException {
@@ -1911,7 +1942,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataOutputStream remoteOut = 
        ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, cflags, bufferSize, 
          replication, blockSize, progress, checksumOpt);
-    if (!this.writeCacheEnabled) {
+    boolean exclude = inExcludeList(f.toString());
+    if (exclude) {
+      /*DEBUG*/ LOG.error("Create: found write cache exclude {}", f);
+    }
+    if (!this.writeCacheEnabled || exclude) {
       return remoteOut;
     }
     
@@ -1929,6 +1964,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
+  
   public boolean mkdirs(Path path, FsPermission permission)
       throws IOException, FileAlreadyExistsException {
     LOG.debug("Create dir: {}", path);
@@ -1964,8 +2000,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataOutputStream remoteOut = 
         ((RemoteFileSystemAccess)remoteFS).createNonRecursiveRemote(path, permission, flags, bufferSize, 
           replication, blockSize, progress);
-
-    if (!this.writeCacheEnabled) {
+    boolean exclude = inExcludeList(path.toString());
+    if (exclude) {
+    /*DEBUG*/ LOG.error("Create: found write cache exclude {}", path);
+    }
+    if (!this.writeCacheEnabled || exclude) {
       return remoteOut;
     }
     Path cachePath = remoteToCachingPath(path);
@@ -1991,7 +2030,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         ((RemoteFileSystemAccess)remoteFS).createNonRecursiveRemote(path, permission, overwrite, bufferSize, 
           replication, blockSize, progress);
 
-    if (!this.writeCacheEnabled) {
+    boolean exclude = inExcludeList(path.toString());
+    if (exclude) {
+    /*DEBUG*/ LOG.error("Create: found write cache exclude {}", path);
+    }
+    if (!this.writeCacheEnabled || exclude) {
       return remoteOut;
     }
     Path cachePath = remoteToCachingPath(path);
@@ -2034,11 +2077,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     // Check if src is file
     boolean isFile = isFile(src);
     boolean result = ((RemoteFileSystemAccess) remoteFS).renameRemote(src, dst);
+    boolean delete = inExcludeList(dst.toString());
+    if (delete) {
+      /*DEBUG*/ LOG.error("Rename exclude found to {}", dst);
+    }
     if (result && isFile) {
       FileStatus status = metaGet(src);
       if (status != null) {
         metaDelete(src);
-        metaPut(dst, status);
+        if (!delete) {
+          metaPut(dst, status);
+        }
       }
       // Clear data pages cache
       Runnable r = () -> {
@@ -2049,17 +2098,19 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       if (!this.writeCacheEnabled) {
         return result;
       }
-
       Path cacheSrc = null, cacheDst = null;
       try {
         cacheSrc = remoteToCachingPath(src);
         cacheDst = remoteToCachingPath(dst);
         if (this.writeCacheFS.exists(cacheSrc)) {
-          boolean res = this.writeCacheFS.rename(cacheSrc, cacheDst);
+          boolean res = delete? this.writeCacheFS.delete(cacheSrc, false):
+              this.writeCacheFS.rename(cacheSrc, cacheDst);
           if (res) {
             // Remove from write-cache file list
             Long len = writeCacheFileList.remove(cacheSrc.toString());
-            writeCacheFileList.put(cacheDst.toString(), len);
+            if (!delete && len != null) {
+              writeCacheFileList.put(cacheDst.toString(), len);
+            }
           }
         }
       } catch (IOException e) {
@@ -2074,11 +2125,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     // Check if src is file
     boolean isFile = isFile(src);
     ((RemoteFileSystemAccess) remoteFS).renameRemote(src, dst, options);
+    boolean delete = inExcludeList(dst.toString());
+    if (delete) {
+      /*DEBUG*/ LOG.error("Rename exclude found {}", dst);
+    }
     if (isFile) {
       FileStatus status = metaGet(src);
       if (status != null) {
         metaDelete(src);
-        metaPut(dst, status);
+        if (!delete) {
+          metaPut(dst, status);
+        }
       }
       // Clear data pages cache
       Runnable r = () -> {
@@ -2095,11 +2152,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         cacheSrc = remoteToCachingPath(src);
         cacheDst = remoteToCachingPath(dst);
         if (this.writeCacheFS.exists(cacheSrc)) {
-          boolean res = this.writeCacheFS.rename(cacheSrc, cacheDst);
+          boolean res = delete? writeCacheFS.delete(cacheSrc, false): writeCacheFS.rename(cacheSrc, cacheDst);
           if (res) {
             // Remove from write-cache file list
             Long len = writeCacheFileList.remove(cacheSrc.toString());
-            if (len != null) {
+            if (!delete && len != null) {
               writeCacheFileList.put(cacheDst.toString(), len);
             }
           }
