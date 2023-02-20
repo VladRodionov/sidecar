@@ -115,7 +115,7 @@ public class SidecarConfig extends Properties {
    */
   public final static String SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY = "sidecar.scan.detector.threshold.pages";
   
-  public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC;
+  public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC_CLOSE;
   
   public final static DataCacheMode DEFAULT_SIDECAR_DATA_CACHE_MODE = DataCacheMode.ALL;
   

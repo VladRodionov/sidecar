@@ -20,8 +20,8 @@ package com.carrot.sidecar;
 public enum WriteCacheMode {
   DISABLED("DISABLED"),
   SYNC ("SYNC"),       // for caching FS which is non-distributed and not HA - this is the only mode
-  ASYNC ("ASYNC"),      // for distributed and HA (redundant) 
-  ASYNC_TURBO ("ASYNC_TURBO");
+  ASYNC_CLOSE ("ASYNC_CLOSE"),      // for distributed and HA (redundant) 
+  ASYNC_COPY ("ASYNC_COPY");
   
   private final String mode;
   
@@ -34,6 +34,6 @@ public enum WriteCacheMode {
   }
   
   public static WriteCacheMode defaultMode() {
-    return WriteCacheMode.ASYNC;
+    return WriteCacheMode.DISABLED;
   }
 }

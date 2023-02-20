@@ -407,7 +407,7 @@ public class TestSidecarCachingFileSystem {
     
     SidecarConfig cacheConfig = SidecarConfig.getInstance();
     cacheConfig.setJMXMetricsEnabled(false);
-    cacheConfig.setWriteCacheMode(useWriteCache? WriteCacheMode.ASYNC: WriteCacheMode.DISABLED);
+    cacheConfig.setWriteCacheMode(useWriteCache? WriteCacheMode.ASYNC_CLOSE: WriteCacheMode.DISABLED);
     cacheConfig.setTestMode(true); // do not install shutdown hooks
     if (useWriteCache) {
       cacheConfig.setWriteCacheSizePerInstance(writeCacheSize);
