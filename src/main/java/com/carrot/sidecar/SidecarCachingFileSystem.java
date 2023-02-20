@@ -1032,7 +1032,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         // Are they idempotent?
         result = unboundedThreadPool.awaitTermination(5, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
-        // TODO Auto-generated catch block
         Thread.interrupted();
       }
       LOG.info("Shutting down the executor service, task queue length={}", taskQueue.size() );
@@ -1041,7 +1040,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
  
   private boolean inWriteCache(Path p) {
     boolean result = writeCacheFileList.exists(p.toString());
-    this.stats.addTotalFilesOpened(1);
     if (result) {
       this.stats.addTotalFilesOpenedInWriteCache(1);
     }
@@ -1049,6 +1047,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private boolean isCacheableFile(Path p, long size) {
+    if (!writeCacheEnabled) {
+      return true;
+    }
     p = remoteToCachingPath(p);
     switch(dataCacheMode) {
       case ALL: return true;
@@ -1314,6 +1315,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       LOG.debug("checkEviction storage={}", storageOccupied);
       if (writeCacheFileList.size() == 0) {
         // Wait until first file be available
+        // This can happen when 
+        //TODO: make this log message periodic with some interval
+        LOG.warn("No files to evict from write cache found. Write cache size {} is too small.", writeCacheMaxSize);
         return;
       }
       Thread t = evictor.get();
@@ -1425,7 +1429,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (!metaCacheable) {
       return null;
     }
-    // 64 is sufficient to keep the whole key (16) + value (8 modification time, 8 - length, 1 byte is directoy) 
+    // 64 is sufficient to keep the whole key (16) + 
+    // value (8 modification time, 8 - length, 1 byte is directory) 
     byte[] buf = new byte[64];
     try {
       int size = (int) metaCache.get(key,  0,  key.length, buf, 0);
@@ -1560,7 +1565,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     } catch(IOException e) {
       LOG.error("Remote stream getPos() failed {}", e);
     }
-    /*DEBUG*/LOG.info("Closing remote {} len={}", path, length);
+    LOG.debug("Closing remote {} len={}", path, length);
     // Update data set size
     dataSetSizeOnDisk.addAndGet(length);
     
@@ -1829,6 +1834,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (writeCacheEnabled) {
       // Caching file system does not support concat?
       // HDFS - does not support - so delete files from caching
+      //TODO: fix it - check concatenation first, then delete if exception
       for (Path p : psrcs) {
         Path cachedPath = remoteToCachingPath(p);
         // Remove from write-cache file list
@@ -1858,10 +1864,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @return input stream
    * @throws Exception
    */
-  
+    
   public FSDataInputStream open(Path path, int bufferSize) throws IOException {
 
-    LOG.debug("Open {}", path);
     final Path qPath = isQualified(path)? path: this.remoteFS.makeQualified(path);
 
     Callable<FSDataInputStream> remoteCall = () -> {
@@ -1884,6 +1889,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataInputStream cachingInputStream =
         new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
             dataPageSize, ioBufferSize, this.stats, cacheOnRead, sd));
+
+    this.stats.addTotalFilesOpened(1);
     return cachingInputStream;
   }
   /**
@@ -1911,25 +1918,23 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
          replication, blockSize, progress);
     
     boolean exclude = inExcludeList(f.toString());
-    if (exclude) {
-      /*DEBUG*/ LOG.error("Create: found write cache exclude {}", f);
-    }
-    if (!this.writeCacheEnabled || exclude) {
-      return remoteOut;
+    if (exclude && writeCacheEnabled) {
+      LOG.debug("Create: found write cache exclude {}", f);
     }
     
-    Path cachePath = remoteToCachingPath(f);
     FSDataOutputStream cacheOut = null;
-    try {
+    if (writeCacheEnabled && !exclude) {
+      Path cachePath = remoteToCachingPath(f);
+      try {
         cacheOut = this.writeCacheFS.create(cachePath, permission, overwrite, bufferSize, replication,
           blockSize, null);
-    } catch (IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
+      } catch (IOException e) {
+        LOG.error("Write cache create file failed", e);
+        return remoteOut;
+      }
+      // Create file moniker
+      createMoniker(cachePath);
     }
-
-    // Create file moniker
-    createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
   
@@ -1943,25 +1948,23 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
        ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, cflags, bufferSize, 
          replication, blockSize, progress, checksumOpt);
     boolean exclude = inExcludeList(f.toString());
-    if (exclude) {
-      /*DEBUG*/ LOG.error("Create: found write cache exclude {}", f);
-    }
-    if (!this.writeCacheEnabled || exclude) {
-      return remoteOut;
+    if (exclude && writeCacheEnabled) {
+      LOG.debug("Create: found write cache exclude {}", f);
     }
     
-    Path cachePath = remoteToCachingPath(f);
     FSDataOutputStream cacheOut = null;
-    try {
+    if (writeCacheEnabled && !exclude) {
+      Path cachePath = remoteToCachingPath(f);
+      try {
         cacheOut = this.writeCacheFS.create(cachePath, permission, cflags, bufferSize, replication,
           blockSize, null);
-    } catch (IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
+      } catch (IOException e) {
+        LOG.error("Write cache create file failed", e);
+        return remoteOut;
+      }
+      // Create file moniker
+      createMoniker(cachePath);
     }
-
-    // Create file moniker
-    createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, f, this));
   }
   
@@ -2001,22 +2004,21 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         ((RemoteFileSystemAccess)remoteFS).createNonRecursiveRemote(path, permission, flags, bufferSize, 
           replication, blockSize, progress);
     boolean exclude = inExcludeList(path.toString());
-    if (exclude) {
-    /*DEBUG*/ LOG.error("Create: found write cache exclude {}", path);
+    if (exclude && writeCacheEnabled) {
+      LOG.debug("Create: found write cache exclude {}", path);
     }
-    if (!this.writeCacheEnabled || exclude) {
-      return remoteOut;
-    }
-    Path cachePath = remoteToCachingPath(path);
     FSDataOutputStream cacheOut = null;
-    try {
+    if (writeCacheEnabled && !exclude) {
+      Path cachePath = remoteToCachingPath(path);
+      try {
         this.writeCacheFS.create(cachePath, true, bufferSize, replication, blockSize);
-    } catch(IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
+      } catch(IOException e) {
+        LOG.error("Write cache create file failed", e);
+        return remoteOut;
+      }
+      // Create file moniker
+      createMoniker(cachePath);
     }
-    // Create file moniker
-    createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
   }
 
@@ -2031,22 +2033,22 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           replication, blockSize, progress);
 
     boolean exclude = inExcludeList(path.toString());
-    if (exclude) {
-    /*DEBUG*/ LOG.error("Create: found write cache exclude {}", path);
+    if (exclude && writeCacheEnabled) {
+      LOG.error("Create: found write cache exclude {}", path);
     }
-    if (!this.writeCacheEnabled || exclude) {
-      return remoteOut;
-    }
-    Path cachePath = remoteToCachingPath(path);
+
     FSDataOutputStream cacheOut = null;
-    try {
+    if (writeCacheEnabled && !exclude) {
+      Path cachePath = remoteToCachingPath(path);
+      try {
         this.writeCacheFS.create(cachePath, true, bufferSize, replication, blockSize);
-    } catch(IOException e) {
-      LOG.error("Write cache create file failed", e);
-      return remoteOut;
+      } catch (IOException e) {
+        LOG.error("Write cache create file failed", e);
+        return remoteOut;
+      }
+      // Create file moniker
+      createMoniker(cachePath);
     }
-    // Create file moniker
-    createMoniker(cachePath);
     return new FSDataOutputStream(new SidecarCachingOutputStream(cacheOut, remoteOut, path, this));
   }
   
@@ -2078,8 +2080,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     boolean isFile = isFile(src);
     boolean result = ((RemoteFileSystemAccess) remoteFS).renameRemote(src, dst);
     boolean delete = inExcludeList(dst.toString());
-    if (delete) {
-      /*DEBUG*/ LOG.error("Rename exclude found to {}", dst);
+    if (delete && writeCacheEnabled) {
+        LOG.debug("Rename exclude found to {}", dst);
     }
     if (result && isFile) {
       FileStatus status = metaGet(src);
@@ -2126,8 +2128,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     boolean isFile = isFile(src);
     ((RemoteFileSystemAccess) remoteFS).renameRemote(src, dst, options);
     boolean delete = inExcludeList(dst.toString());
-    if (delete) {
-      /*DEBUG*/ LOG.error("Rename exclude found {}", dst);
+    if (delete && writeCacheEnabled) {
+      LOG.debug("Rename exclude found {}", dst);
     }
     if (isFile) {
       FileStatus status = metaGet(src);
