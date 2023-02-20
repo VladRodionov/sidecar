@@ -20,7 +20,7 @@ package com.carrot.sidecar;
 public enum DataCacheMode {
   ALL("ALL"), // Cache everything
   NOT_IN_WRITE_CACHE ("NOT_IN_WRITE_CACHE"), // cache data only if file is not in write cache       
-  SIZE_OVER ("SIZE_OVER");      // cache data only if file size is over some threshold
+  MINSIZE ("MINSIZE");      // cache data only if file size is over some threshold
   
   private final String mode;
   
