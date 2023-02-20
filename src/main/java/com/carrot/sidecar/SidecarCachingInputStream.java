@@ -650,7 +650,8 @@ public class SidecarCachingInputStream extends InputStream
       if (curOffset != fileOffset) {
         boolean scanDetected = sd.record(fileOffset);
         if (scanDetected) {
-          this.cacheOnRead = false;
+          // Disabling this until SD issue gets its resolution: https://github.com/VladRodionov/sidecar/issues/89
+          //this.cacheOnRead = false;
           this.stats.addTotalScansDetected(1);
           return false;
         }
