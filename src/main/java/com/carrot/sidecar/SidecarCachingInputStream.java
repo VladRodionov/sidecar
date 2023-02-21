@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
-import com.carrot.sidecar.SidecarCachingFileSystem.Statistics;
+import com.carrot.sidecar.util.Statistics;
 import com.carrot.sidecar.util.ScanDetector;
 
 @NotThreadSafe
@@ -142,7 +142,7 @@ public class SidecarCachingInputStream extends InputStream
   
   private byte[] one = new byte[1];
 
-  private SidecarCachingFileSystem.Statistics stats;
+  private Statistics stats;
   
   private ScanDetector sd;
     

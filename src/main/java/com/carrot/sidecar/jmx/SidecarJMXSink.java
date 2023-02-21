@@ -18,7 +18,7 @@
 package com.carrot.sidecar.jmx;
 
 import com.carrot.sidecar.SidecarCachingFileSystem;
-import com.carrot.sidecar.SidecarCachingFileSystem.Statistics;
+import com.carrot.sidecar.util.Statistics;
 
 public class SidecarJMXSink implements SidecarJMXSinkMBean{
 

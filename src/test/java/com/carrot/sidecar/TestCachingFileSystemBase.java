@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
-import com.carrot.sidecar.SidecarCachingFileSystem.Statistics;
+import com.carrot.sidecar.util.Statistics;
 import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
 
 /**
