@@ -30,6 +30,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.carrot.sidecar.hints.CacheOnReadHint;
+
 public class SidecarConfig extends Properties {
   private static final long serialVersionUID = 1L;
   private static final Logger LOG = LoggerFactory.getLogger(SidecarConfig.class);
@@ -60,6 +62,8 @@ public class SidecarConfig extends Properties {
   public final static String SIDECAR_DATA_CACHE_TYPE_KEY = "sidecar.data.cache.type";
   
   public final static String SIDECAR_PERSISTENT_CACHE_KEY = "sidecar.cache.persistent";
+  
+  public final static String SIDECAR_CACHE_HINT_IMPL_KEY = "sidecar.cache.hint.impl";
   
   /**
    * This thread pool is used to sync write cache and remote FS as well as 
@@ -659,4 +663,30 @@ public class SidecarConfig extends Properties {
     return this;
   }
   
+  /**
+   * Set cache hint class name
+   * @param className class name
+   * @return self
+   */
+  public SidecarConfig setCacheHintImpl(String className) {
+    setProperty(SIDECAR_CACHE_HINT_IMPL_KEY, className);
+    return this;
+  }
+  
+  /**
+   * Get cache on read hint
+   * @return hint object
+   */
+  public CacheOnReadHint getCacheOnReadHint() {
+    String className = getProperty(SIDECAR_CACHE_HINT_IMPL_KEY);
+    if (className != null) {
+      try {
+        Class<?> clz = Class.forName(className);
+        return (CacheOnReadHint) clz.getDeclaredConstructor().newInstance();
+      } catch(Exception e) {
+        LOG.error("Failed to initialize", e);
+      }
+    }
+    return null;
+  }
 }

@@ -23,10 +23,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -41,6 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
+import com.carrot.sidecar.hints.CacheOnReadHint;
 import com.carrot.sidecar.util.ScanDetector;
 import com.carrot.sidecar.util.Statistics;
 
@@ -72,9 +70,7 @@ public class SidecarCachingInputStream extends InputStream
   private static ObjectPool<byte[]> ioPool = new ObjectPool<byte[]>(32);
   
   /* Pool which keeps page buffers to read from external source */
-  private static ObjectPool<byte[]> pagePool = new ObjectPool<byte[]>(32);
-  
-  private static Map<Thread, Boolean> nonCacheableThreads = new ConcurrentHashMap<Thread, Boolean>();
+  private static ObjectPool<byte[]> pagePool = new ObjectPool<byte[]>(32);  
   
   static synchronized void initIOPools(int size) {
     if (ioPool == null || ioPool.getMaxSize() != size) {
@@ -154,9 +150,9 @@ public class SidecarCachingInputStream extends InputStream
   /** TODO: real scan detector */
   private ScanDetector sd;
   
-  /** Stream access counter */
-  private AtomicLong streamAccessCounter = new AtomicLong(0);
- 
+  /** Cache on read hint class */
+  private CacheOnReadHint hint;
+  
   /**
    * Constructor 
    * @param cache parent cache
@@ -212,29 +208,12 @@ public class SidecarCachingInputStream extends InputStream
     this.stats = stats;
     this.cacheOnRead = cacheOnRead;
     this.sd = sd;
-    
+    this.hint = CacheOnReadHint.fromConfig(SidecarConfig.getInstance());
   }
   
   private boolean cacheOnReadThread() {
-    Thread currentThread = Thread.currentThread();
-    if (nonCacheableThreads.containsKey(currentThread)) {
-      return false;
-    }
-    long count = streamAccessCounter.incrementAndGet();
-    if (count % 10 == 0) {
-      // This call is expensive: on my MBP Pro 2019 it takes 20 microseconds
-      // So it is expensive to call it every time we read data from the stream
-      // Therefore, we call it every 10th time
-      StackTraceElement[] traces = currentThread.getStackTrace();
-      String compactor = "org.apache.hadoop.hbase.regionserver.compactions.Compactor";
-      for (int i = traces.length - 1; i >= 0; i--) {
-        StackTraceElement e = traces[i];
-        if (e.getClassName().equals(compactor)) {
-          nonCacheableThreads.put(currentThread, Boolean.TRUE);
-          return false;
-        }
-      }
-      return true;
+    if (this.hint != null) {
+      return hint.cacheOnReadThread();
     }
     return true;
   }

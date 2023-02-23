@@ -1536,9 +1536,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     boolean cacheOnRead = isCacheableFile(qPath, length);
     ScanDetector sd = cacheOnRead && isScanDetectorEnabled()? 
         new ScanDetector(scanThreashold, dataPageSize): null;
-    FSDataInputStream cachingInputStream =
-        new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
-            dataPageSize, ioBufferSize, this.stats, cacheOnRead, sd));
+    SidecarCachingInputStream scis = new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
+      dataPageSize, ioBufferSize, this.stats, cacheOnRead, sd);
+    FSDataInputStream cachingInputStream = new FSDataInputStream(scis);
     this.stats.addTotalFilesOpened(1);
     return cachingInputStream;
   }
