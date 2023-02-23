@@ -284,18 +284,18 @@ public class SidecarCachingInputStream extends InputStream
     long toSkip = Math.min(remaining(), n);
     position += toSkip;
     //TODO: do we need to keep cache and remote stream in sync?
-    getRemoteStream().skip(toSkip);
-    this.cacheStream = getCacheStream();
-    if (this.cacheStream != null) {
-      try {
-        this.cacheStream.skip(toSkip);
-      } catch(IOException e) {
-        //TODO: better handling exception
-        LOG.error("Cached input stream skip", e);
-        this.cacheStream = null;
-        this.cacheStreamCallable = null;
-      }
-    }
+//    getRemoteStream().skip(toSkip);
+//    this.cacheStream = getCacheStream();
+//    if (this.cacheStream != null) {
+//      try {
+//        this.cacheStream.skip(toSkip);
+//      } catch(IOException e) {
+//        //TODO: better handling exception
+//        LOG.error("Cached input stream skip", e);
+//        this.cacheStream = null;
+//        this.cacheStreamCallable = null;
+//      }
+//    }
     return toSkip;
   }
 
@@ -351,18 +351,18 @@ public class SidecarCachingInputStream extends InputStream
     this.position = pos;
     //TODO: do we need to keep streams in sync?
     // We use only positional reads on these streams
-    getRemoteStream().seek(pos);
-    this.cacheStream = getCacheStream();
-    if (this.cacheStream != null) {
-      try {
-        this.cacheStream.seek(pos);
-      } catch(IOException e) {
-        //TODO: better handling exception
-        LOG.error("Cached input stream seek", e);
-        this.cacheStream = null;
-        this.cacheStreamCallable = null;
-      }
-    }
+//    getRemoteStream().seek(pos);
+//    this.cacheStream = getCacheStream();
+//    if (this.cacheStream != null) {
+//      try {
+//        this.cacheStream.seek(pos);
+//      } catch(IOException e) {
+//        //TODO: better handling exception
+//        LOG.error("Cached input stream seek", e);
+//        this.cacheStream = null;
+//        this.cacheStreamCallable = null;
+//      }
+//    }
   }
 
   @Override
