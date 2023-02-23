@@ -23,7 +23,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -38,8 +41,8 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
-import com.carrot.sidecar.util.Statistics;
 import com.carrot.sidecar.util.ScanDetector;
+import com.carrot.sidecar.util.Statistics;
 
 @NotThreadSafe
 public class SidecarCachingInputStream extends InputStream 
@@ -70,6 +73,8 @@ public class SidecarCachingInputStream extends InputStream
   
   /* Pool which keeps page buffers to read from external source */
   private static ObjectPool<byte[]> pagePool = new ObjectPool<byte[]>(32);
+  
+  private static Map<Thread, Boolean> nonCacheableThreads = new ConcurrentHashMap<Thread, Boolean>();
   
   static synchronized void initIOPools(int size) {
     if (ioPool == null || ioPool.getMaxSize() != size) {
@@ -140,12 +145,18 @@ public class SidecarCachingInputStream extends InputStream
   /** End of file reached */
   private volatile boolean EOF = false;
   
+  /** Just 'one' byte */
   private byte[] one = new byte[1];
 
+  /** Statistics collector*/
   private Statistics stats;
   
+  /** TODO: real scan detector */
   private ScanDetector sd;
-    
+  
+  /** Stream access counter */
+  private AtomicLong streamAccessCounter = new AtomicLong(0);
+ 
   /**
    * Constructor 
    * @param cache parent cache
@@ -201,6 +212,31 @@ public class SidecarCachingInputStream extends InputStream
     this.stats = stats;
     this.cacheOnRead = cacheOnRead;
     this.sd = sd;
+    
+  }
+  
+  private boolean cacheOnReadThread() {
+    Thread currentThread = Thread.currentThread();
+    if (nonCacheableThreads.containsKey(currentThread)) {
+      return false;
+    }
+    long count = streamAccessCounter.incrementAndGet();
+    if (count % 10 == 0) {
+      // This call is expensive: on my MBP Pro 2019 it takes 20 microseconds
+      // So it is expensive to call it every time we read data from the stream
+      // Therefore, we call it every 10th time
+      StackTraceElement[] traces = currentThread.getStackTrace();
+      String compactor = "org.apache.hadoop.hbase.regionserver.compactions.Compactor";
+      for (int i = traces.length - 1; i >= 0; i--) {
+        StackTraceElement e = traces[i];
+        if (e.getClassName().equals(compactor)) {
+          nonCacheableThreads.put(currentThread, Boolean.TRUE);
+          return false;
+        }
+      }
+      return true;
+    }
+    return true;
   }
   
   /**
@@ -289,7 +325,6 @@ public class SidecarCachingInputStream extends InputStream
 
     // Do not throw exception
     if (closed) {
-      LOG.error("Cannot close a closed stream, file={}", path);
       return;
     }
     try {
@@ -637,7 +672,7 @@ public class SidecarCachingInputStream extends InputStream
   private boolean dataPageExists(byte[] key) {
     return cache.exists(key);
   }
-  
+
   private boolean dataPagePut(byte[] key, int keyOffset, int keySize, 
       byte[] value, int valueOffset, int valueSize, long fileOffset /* to detect scan*/)
     throws IOException
@@ -645,19 +680,36 @@ public class SidecarCachingInputStream extends InputStream
     if (!cacheOnRead) {
       return false;
     }
+    
     if (this.sd != null) {
       long curOffset = sd.current();
       if (curOffset != fileOffset) {
         boolean scanDetected = sd.record(fileOffset);
         if (scanDetected) {
           // Disabling this until SD issue gets its resolution: https://github.com/VladRodionov/sidecar/issues/89
-          //this.cacheOnRead = false;
+          this.cacheOnRead = false;
           this.stats.addTotalScansDetected(1);
+          //*DEBUG*/ LOG.error("SCAN detected {} set cache=false", path.getName());
           return false;
         }
       }
     }
-    return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
+    synchronized (cache) {
+      // TODO: use future putIfAbsent API
+      if (cache.exists(key, keyOffset, keySize)) {
+        // data pages in the cache are unique because of the key naming scheme:
+        // MD5(file-path + modification time + file offset)
+        // so if we have the same key we have the same data page
+        // no need to insert it
+        // This can happen when multiple clients access the same data file
+        // Exists API is cheap. Its less than 1 microsecond on average
+        return false;
+      }
+      // Put call is cheap as well - it stores data in in-memory buffer
+      // when memory buffer becomes full it is submitted asynchronously 
+      // for file save operation
+      return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
+    }
   }
   
   /*****************************/
@@ -760,93 +812,85 @@ public class SidecarCachingInputStream extends InputStream
    * @return
    * @throws IOException
    */
-  private int readInternal(byte[] bytesBuffer, int offset, int length,
-      long position, boolean isPositionedRead) throws IOException {
-    
-    // Adjust length
-    // just in case
-    length = (int) Math.min(length,  this.fileLength - position);
-    Range pageRange = getPageRange(position, length);
-    // Try prefetch buffer first
-    int read = readFromPrefetchBuffer(bytesBuffer, offset, length, position);
-    if (read > 0) {
-      cacheDataFromPrefetchBuffer(pageRange);
-      if (!isPositionedRead) {
-        this.position += read;
+  private int readInternal(byte[] bytesBuffer, int offset, int length, long position,
+      boolean isPositionedRead) throws IOException {
+
+    boolean toCache = cacheOnReadThread();
+    boolean oldCacheOnRead = cacheOnRead;
+    cacheOnRead = toCache;
+    try {
+      // Adjust length
+      // just in case
+      length = (int) Math.min(length, this.fileLength - position);
+      Range pageRange = getPageRange(position, length);
+      // Try prefetch buffer first
+      int read = readFromPrefetchBuffer(bytesBuffer, offset, length, position);
+      if (read > 0) {
+        cacheDataFromPrefetchBuffer(pageRange);
+        if (!isPositionedRead) {
+          this.position += read;
+        }
+        return read;
       }
-      return read;
-    }
-    // Now try page cache
-    boolean[] in_cache = inCache(pageRange);
-    read = readFromCache(bytesBuffer, offset, length, position, 
-                          isPositionedRead, pageRange, in_cache);
-    if (read > 0) {
-      return read;
-    }
-    // Some pages are neither in the cache nor in the I/O buffer - read ALL from write cache FS
-    // or from remote FS
-    byte[] buf = getBuffer((int)pageRange.size);
-    
-    // For positional reads we read only what is required
-    // For non-positional we do prefetching
-    int toRead = !isPositionedRead  ? 
-        (int) Math.min(buf.length, this.fileLength - pageRange.start): 
-          (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
-            
-    //TODO: handle prefetching in external sources
-    // We need 'length' of data, but can read more than that
-    // if read is not positioned - we can not advance position by 'toRead' bytes 
-    
-    //FIXME: this is efficiently positional reads
-    // in case of streaming access can be expensive
-    read = readFullyFromWriteCacheFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
-    if (read < 0) {
-      read = readFullyFromRemoteFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
-    }
-    //TODO: check on read > 0?
-    this.bufferStartOffset = pageRange.start;
-    this.bufferEndOffset = pageRange.start + read;
-    
-    // Save to the page cache
-    long pos = pageRange.start;
-    for (int i = 0; i < in_cache.length; i++) {
-      if (!in_cache[i]) {
-        byte[] key = getKey(this.baseKey, pos, this.pageSize);
-        int size = (int) Math.min(this.pageSize, this.fileLength - pos);
-        long fileOffset = pos / pageSize * pageSize;
-        dataPagePut(key, 0, key.length, buf, i * this.pageSize, size, fileOffset);
+      // Now try page cache
+      boolean[] in_cache = inCache(pageRange);
+      read = readFromCache(bytesBuffer, offset, length, position, isPositionedRead, pageRange,
+        in_cache);
+      if (read > 0) {
+        return read;
       }
-      pos += this.pageSize;
-    }
-    // Adjust stream position if not positioned read
-    if (!isPositionedRead) {
-      this.position += length;
-    }
-    // Copy from buf to bytesBuffer
-    int off = (int) (position - pageRange.start);
-    System.arraycopy(buf, off, bytesBuffer, offset, length);
-    // Update I/O buffer range
-    if (buf == this.buffer) {
+      // Some pages are neither in the cache nor in the I/O buffer - read ALL from write cache FS
+      // or from remote FS
+      byte[] buf = getBuffer((int) pageRange.size);
+
+      // For positional reads we read only what is required
+      // For non-positional we do prefetching
+      int toRead = !isPositionedRead ? (int) Math.min(buf.length, this.fileLength - pageRange.start)
+          : (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
+
+      // TODO: handle prefetching in external sources
+      // We need 'length' of data, but can read more than that
+      // if read is not positioned - we can not advance position by 'toRead' bytes
+
+      // FIXME: this is efficiently positional reads
+      // in case of streaming access can be expensive
+      read = readFullyFromWriteCacheFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
+      if (read < 0) {
+        read = readFullyFromRemoteFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
+      }
+      // TODO: check on read > 0?
       this.bufferStartOffset = pageRange.start;
-      this.bufferEndOffset = pageRange.start + toRead;
+      this.bufferEndOffset = pageRange.start + read;
+
+      // Save to the page cache
+      long pos = pageRange.start;
+      for (int i = 0; i < in_cache.length; i++) {
+        if (!in_cache[i]) {
+          byte[] key = getKey(this.baseKey, pos, this.pageSize);
+          int size = (int) Math.min(this.pageSize, this.fileLength - pos);
+          long fileOffset = pos / pageSize * pageSize;
+          dataPagePut(key, 0, key.length, buf, i * this.pageSize, size, fileOffset);
+        }
+        pos += this.pageSize;
+      }
+      // Adjust stream position if not positioned read
+      if (!isPositionedRead) {
+        this.position += length;
+      }
+      // Copy from buf to bytesBuffer
+      int off = (int) (position - pageRange.start);
+      System.arraycopy(buf, off, bytesBuffer, offset, length);
+      // Update I/O buffer range
+      if (buf == this.buffer) {
+        this.bufferStartOffset = pageRange.start;
+        this.bufferEndOffset = pageRange.start + toRead;
+      }
+      return length;
+    } finally {
+      cacheOnRead = oldCacheOnRead;
     }
-    return length;
   }
   
-//  private void syncPosition() throws IOException {
-//    getRemoteStream().seek(this.position);
-//    FSDataInputStream cacheStream = getCacheStream();
-//    if (cacheStream != null) {
-//      try {
-//        cacheStream.seek(this.position);
-//      } catch (IOException e) {
-//        // TODO: better handling exception
-//        LOG.error("Cached input stream readInternal0", e);
-//        this.cacheStreamCallable = null;
-//        this.cacheStream = null;
-//      }
-//    }
-//  }
   
   /**
    * This in fact reads from read cache

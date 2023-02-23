@@ -139,7 +139,7 @@ public class SidecarConfig extends Properties {
   
   public final static int DEFAULT_SIDECAR_THREAD_POOL_MAX_SIZE = 8;
   
-  public final static boolean DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE = true;
+  public final static boolean DEFAULT_SIDECAR_REMOTE_FILES_MUTABLE = false;
   
   public final static boolean DEFAULT_SIDECAR_INSTALL_SHUTDOWN_HOOK = false;
   
@@ -517,7 +517,7 @@ public class SidecarConfig extends Properties {
    * Are remote files potentially mutable
    * @return true or false
    */
-  public boolean areRemoteFilesMutable() {
+  public boolean getRemoteFilesMutable() {
     String value = getProperty(SIDECAR_REMOTE_FILES_MUTABLE_KEY);
     if (value != null) {
       return Boolean.parseBoolean(value);

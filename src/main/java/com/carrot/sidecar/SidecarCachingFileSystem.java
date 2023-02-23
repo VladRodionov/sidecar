@@ -230,6 +230,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   /**
    * Remote FS is not safe, files can be changed
+   * So, data pages are always immutable in the cache
+   * If file content changes, its modification changes
+   * as well. Each data page key depends on combination of
+   * remote file path and its modification time. For such 
+   * applications set remoteMutable = true
    */
   private boolean remoteMutable;
   
@@ -529,7 +534,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       this.ioPoolSize = (int) sconfig.getIOPoolSize();
       this.writeCacheMode = sconfig.getWriteCacheMode();
       this.writeCacheEnabled = writeCacheMode != WriteCacheMode.DISABLED;
-      this.remoteMutable = sconfig.areRemoteFilesMutable();
+      this.remoteMutable = sconfig.getRemoteFilesMutable();
       this.dataCacheMode = sconfig.getDataCacheMode();
       this.minSizeToCache = sconfig.getCacheableFileSizeThreshold();
       this.scanDetectorEnabled = sconfig.isScanDetectorEnabled();
@@ -696,14 +701,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private boolean isCacheableFile(Path p, long size) {
-    if (!writeCacheEnabled) {
-      return true;
-    }
-    p = remoteToCachingPath(p);
+    p = writeCacheEnabled? remoteToCachingPath(p): p;
     switch(dataCacheMode) {
       case ALL: return true;
-      case NOT_IN_WRITE_CACHE: return !inWriteCache(p);
-      case MINSIZE: return size > this.minSizeToCache || !inWriteCache(p);
+      case NOT_IN_WRITE_CACHE: return writeCacheEnabled?!inWriteCache(p): true;
+      case MINSIZE: return size > this.minSizeToCache || writeCacheEnabled && !inWriteCache(p);
     }
     return true;
   }
@@ -961,7 +963,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   private void checkEviction() {
     double storageOccupied = (double) writeCacheSize.get() / writeCacheMaxSize;
     if (storageOccupied > writeCacheEvictionStartsAt) {
-      LOG.debug("checkEviction storage={}", storageOccupied);
+      LOG.debug("checkEviction storage occupied={}", storageOccupied);
       if (writeCacheFileList.size() == 0) {
         // Wait until first file be available
         // This can happen when 
@@ -1437,7 +1439,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    **********************************************************************************/
   
   private boolean isPotentiallyMutable(Path p) {
-    //TODO
     return this.remoteMutable;
   }
   
@@ -1538,7 +1539,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FSDataInputStream cachingInputStream =
         new FSDataInputStream(new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,
             dataPageSize, ioBufferSize, this.stats, cacheOnRead, sd));
-
     this.stats.addTotalFilesOpened(1);
     return cachingInputStream;
   }
