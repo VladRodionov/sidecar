@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
-import com.carrot.sidecar.hints.CacheOnReadHint;
+import com.carrot.sidecar.hints.ScanDetectorHint;
 import com.carrot.sidecar.util.ScanDetector;
 import com.carrot.sidecar.util.Statistics;
 
@@ -151,7 +151,7 @@ public class SidecarCachingInputStream extends InputStream
   private ScanDetector sd;
   
   /** Cache on read hint class */
-  private CacheOnReadHint hint;
+  private ScanDetectorHint hint;
   
   /**
    * Constructor 
@@ -208,12 +208,18 @@ public class SidecarCachingInputStream extends InputStream
     this.stats = stats;
     this.cacheOnRead = cacheOnRead;
     this.sd = sd;
-    this.hint = CacheOnReadHint.fromConfig(SidecarConfig.getInstance());
+    this.hint = ScanDetectorHint.fromConfig(SidecarConfig.getInstance());
   }
+  
+  private boolean scanDetected = false;
   
   private boolean cacheOnReadThread() {
     if (this.hint != null) {
-      return hint.cacheOnReadThread();
+      boolean result = hint.scanDetected();
+      if (!result && !scanDetected) {
+        scanDetected = true;
+        /*DEBUG*/ LOG.error("SCAN DETECTED in {}", path.getName());
+      }
     }
     return true;
   }
@@ -794,9 +800,9 @@ public class SidecarCachingInputStream extends InputStream
   private int readInternal(byte[] bytesBuffer, int offset, int length, long position,
       boolean isPositionedRead) throws IOException {
 
-    boolean toCache = cacheOnReadThread();
+    boolean toCacheThread = cacheOnReadThread();
     boolean oldCacheOnRead = cacheOnRead;
-    cacheOnRead = toCache;
+    cacheOnRead = cacheOnRead && toCacheThread;
     try {
       // Adjust length
       // just in case

@@ -1344,8 +1344,14 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           LOG.error("Write cache file list is empty");
           return;
         }
-        LOG.info("Evict file {}", fileName);
         Long len = writeCacheFileList.get(fileName);
+        FileStatus status = metaGet(cachingToRemotePath(new Path(fileName)));
+        if (status != null) {
+         /*DEBUG*/ LOG.error("Evict file {} len={} created {} seconds ago", fileName, len, 
+            (System.currentTimeMillis() - status.getModificationTime()) / 1000);
+        } else {
+          /*DEBUG*/ LOG.error("Evict file {} len={}", fileName, len);
+        }
         Path p = new Path(fileName);
         boolean exists = this.writeCacheFS.exists(p);
         Path moniker = getFileMonikerPath(p);
@@ -1534,6 +1540,8 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FileStatus status = getFileStatus(qPath);
     long length = status.getLen();
     boolean cacheOnRead = isCacheableFile(qPath, length);
+    /*DEBUG*/LOG.error("CACHE={} file {} in write cache={}", cacheOnRead,  qPath.getName(), 
+      inWriteCache(remoteToCachingPath(qPath)));
     ScanDetector sd = cacheOnRead && isScanDetectorEnabled()? 
         new ScanDetector(scanThreashold, dataPageSize): null;
     SidecarCachingInputStream scis = new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,

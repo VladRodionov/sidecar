@@ -19,20 +19,20 @@ package com.carrot.sidecar.hints;
 
 import com.carrot.sidecar.SidecarConfig;
 
-public interface CacheOnReadHint {
+public interface ScanDetectorHint {
   /**
    * Check current thread stack trace and determine
-   * if current session is cacheable
+   * if current session is long scan operation
    * @return true - if yes, false - otherwise
    */
-  public boolean cacheOnReadThread();
+  public boolean scanDetected();
   
   /**
    * Get instance from configuration 
    * @param config sidecar configuration
    * @return instance of hint class
    */
-  public static CacheOnReadHint fromConfig(SidecarConfig config) {
-    return config.getCacheOnReadHint();
+  public static ScanDetectorHint fromConfig(SidecarConfig config) {
+    return config.getScanDetectorHint();
   }
 }

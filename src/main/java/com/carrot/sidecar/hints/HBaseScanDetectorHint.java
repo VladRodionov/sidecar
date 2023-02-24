@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class HBaseCacheOnReadHint implements CacheOnReadHint {
+public class HBaseScanDetectorHint implements ScanDetectorHint {
   
   private static Map<Thread, Boolean> nonCacheableThreads = 
       new ConcurrentHashMap<Thread, Boolean>();
@@ -29,11 +29,11 @@ public class HBaseCacheOnReadHint implements CacheOnReadHint {
   /** Stream access counter */
   private AtomicLong streamAccessCounter = new AtomicLong(0);
   
-  public HBaseCacheOnReadHint() {
+  public HBaseScanDetectorHint() {
   }
   
   @Override
-  public boolean cacheOnReadThread() {
+  public boolean scanDetected() {
     Thread currentThread = Thread.currentThread();
     if (nonCacheableThreads.containsKey(currentThread)) {
       return false;
