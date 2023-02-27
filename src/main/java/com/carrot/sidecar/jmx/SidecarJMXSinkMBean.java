@@ -31,6 +31,8 @@ public interface SidecarJMXSinkMBean {
   long gettotal_bytes_read();
   
   long gettotal_bytes_read_remote_fs();
+
+  long gettotal_bytes_read_remote_fs_scan();
   
   long gettotal_bytes_read_data_cache();
   
@@ -41,7 +43,9 @@ public interface SidecarJMXSinkMBean {
   long gettotal_read_requests();
   
   long gettotal_read_requests_remote_fs();
-  
+
+  long gettotal_read_requests_remote_fs_scan();
+
   long gettotal_read_requests_write_cache();
   
   long gettotal_read_requests_data_cache();
@@ -57,5 +61,17 @@ public interface SidecarJMXSinkMBean {
   long gettotal_files_opened();
   
   long gettotal_files_opened_write_cache();
+  
+  long getio_data_cache_read_avg_time();
+  
+  long getio_data_cache_read_avg_size();
+  
+  long getio_write_cache_read_avg_time();
+  
+  long getio_write_cache_read_avg_size();
+  
+  long getio_remote_fs_read_avg_time();
+  
+  long getio_remote_fs_read_avg_size();
   
 }

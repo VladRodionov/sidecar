@@ -54,6 +54,14 @@ public class Statistics {
     
     AtomicLong totalFilesOpenedInWriteCache = new AtomicLong();
     
+    AtomicLong totalWriteCacheReadTime = new AtomicLong();
+    
+    AtomicLong totalRemoteFSReadTime = new AtomicLong();
+    
+    AtomicLong totalReadRequestsFromRemoteScan = new AtomicLong();
+    
+    AtomicLong totalBytesReadRemoteScan = new AtomicLong();
+
     /**
      * Add total bytes read
      * @param n bytes
@@ -310,6 +318,74 @@ public class Statistics {
     }
     
     /**
+     * Get total read time from write cache
+     * @return total time
+     */
+    public long getTotalWriteCacheReadTime() {
+      return this.totalWriteCacheReadTime.get();
+    }
+    
+    /**
+     * Add total write cache time
+     * @param time 
+     * @return new total
+     */
+    public long addTotalWriteCacheReadTime(long time) {
+      return this.totalWriteCacheReadTime.addAndGet(time);
+    }
+    
+    /**
+     * Get total read time from remote FS
+     * @return total time
+     */
+    public long getTotalRemoteFSReadTime() {
+      return this.totalRemoteFSReadTime.get();
+    }
+    
+    /**
+     * Add total read time from remote FS
+     * @param time 
+     * @return new total
+     */
+    public long addTotalRemoteFSReadTime(long time) {
+      return this.totalRemoteFSReadTime.addAndGet(time);
+    }
+    
+    /**
+     * Get total number of read requests from remote FS in scan
+     * @return total number
+     */
+    public long getTotalReadRequestsFromRemoteScan() {
+      return this.totalReadRequestsFromRemoteScan.get();
+    }
+    
+    /**
+     * Add total requests from remote FS in scan
+     * @param n
+     * @return new total
+     */
+    public long addTotalReadRequestsFromRemoteScan(long n) {
+      return this.totalReadRequestsFromRemoteScan.addAndGet(n);
+    }
+    
+    /**
+     * Get total number of read requests from remote FS in scan
+     * @return total number
+     */
+    public long getTotalBytesReadRemoteScan() {
+      return this.totalBytesReadRemoteScan.get();
+    }
+    
+    /**
+     * Add total bytes from remote FS in scan
+     * @param n
+     * @return new total
+     */
+    public long addTotalBytesReadRemoteScan(long n) {
+      return this.totalBytesReadRemoteScan.addAndGet(n);
+    }
+    
+    /**
      * Save statistics
      * @param dos data output stream
      * @throws IOException 
@@ -330,7 +406,10 @@ public class Statistics {
        dos.writeLong(totalFilesDeleted.get());
        dos.writeLong(totalFilesOpened.get());
        dos.writeLong(totalFilesOpenedInWriteCache.get());
-       
+       dos.writeLong(totalWriteCacheReadTime.get());
+       dos.writeLong(totalRemoteFSReadTime.get());
+       dos.writeLong(totalReadRequestsFromRemoteScan.get());
+       dos.writeLong(totalBytesReadRemoteScan.get());
     }
     
     /**
@@ -354,6 +433,10 @@ public class Statistics {
       totalFilesDeleted.set(dis.readLong());
       totalFilesOpened.set(dis.readLong());
       totalFilesOpenedInWriteCache.set(dis.readLong());
+      totalWriteCacheReadTime.set(dis.readLong());
+      totalRemoteFSReadTime.set(dis.readLong());
+      totalReadRequestsFromRemoteScan.set(dis.readLong());
+      totalBytesReadRemoteScan.set(0);
     }
     
     public void reset() {
@@ -372,5 +455,9 @@ public class Statistics {
       totalFilesDeleted.set(0);
       totalFilesOpened.set(0);
       totalFilesOpenedInWriteCache.set(0);
+      totalWriteCacheReadTime.set(0);
+      totalRemoteFSReadTime.set(0);
+      totalReadRequestsFromRemoteScan.set(0);
+      totalBytesReadRemoteScan.set(0);
     }
   }

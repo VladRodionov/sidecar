@@ -21,7 +21,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class HBaseScanDetectorHint implements ScanDetectorHint {
+  
+  private static final Logger LOG = LoggerFactory.getLogger(HBaseScanDetectorHint.class);  
+
   
   private static Map<Thread, Boolean> nonCacheableThreads = 
       new ConcurrentHashMap<Thread, Boolean>();
@@ -36,7 +42,7 @@ public class HBaseScanDetectorHint implements ScanDetectorHint {
   public boolean scanDetected() {
     Thread currentThread = Thread.currentThread();
     if (nonCacheableThreads.containsKey(currentThread)) {
-      return false;
+      return true;
     }
     long count = streamAccessCounter.incrementAndGet();
     if (count % 10 == 0) {
@@ -49,12 +55,10 @@ public class HBaseScanDetectorHint implements ScanDetectorHint {
         StackTraceElement e = traces[i];
         if (e.getClassName().equals(compactor)) {
           nonCacheableThreads.put(currentThread, Boolean.TRUE);
-          return false;
+          return true;
         }
       }
-      return true;
     }
-    return true;
+    return false;
   }
-
 }

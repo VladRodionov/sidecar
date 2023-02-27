@@ -153,6 +153,8 @@ public class SidecarCachingInputStream extends InputStream
   /** Cache on read hint class */
   private ScanDetectorHint hint;
   
+  private boolean scanDetected = false;
+
   /**
    * Constructor 
    * @param cache parent cache
@@ -210,18 +212,14 @@ public class SidecarCachingInputStream extends InputStream
     this.sd = sd;
     this.hint = ScanDetectorHint.fromConfig(SidecarConfig.getInstance());
   }
-  
-  private boolean scanDetected = false;
-  
-  private boolean cacheOnReadThread() {
+    
+  private boolean scanDetected() {
     if (this.hint != null) {
       boolean result = hint.scanDetected();
-      if (!result && !scanDetected) {
-        scanDetected = true;
-        /*DEBUG*/ LOG.error("SCAN DETECTED in {}", path.getName());
-      }
+      scanDetected = result;
+      return result;
     }
-    return true;
+    return false;
   }
   
   /**
@@ -665,7 +663,6 @@ public class SidecarCachingInputStream extends InputStream
     if (!cacheOnRead) {
       return false;
     }
-    
     if (this.sd != null) {
       long curOffset = sd.current();
       if (curOffset != fileOffset) {
@@ -674,7 +671,6 @@ public class SidecarCachingInputStream extends InputStream
           // Disabling this until SD issue gets its resolution: https://github.com/VladRodionov/sidecar/issues/89
           this.cacheOnRead = false;
           this.stats.addTotalScansDetected(1);
-          //*DEBUG*/ LOG.error("SCAN detected {} set cache=false", path.getName());
           return false;
         }
       }
@@ -770,19 +766,17 @@ public class SidecarCachingInputStream extends InputStream
     return -1;
   }
   
-  
   private byte[] getBuffer(int size) {
     byte[] buf = null;
     if (this.buffer.length >= size) {
       // Read ALL into I/O buffer
       buf = this.buffer;
     } else {
-      int len = (int) size;
-      buf = new byte[len];
+      buf = new byte[size];
       // TODO: analyze
-      this.buffer = buf;
-      this.bufferStartOffset = 0;
-      this.bufferEndOffset = 0;
+      //this.buffer = buf;
+      //this.bufferStartOffset = 0;
+      //this.bufferEndOffset = 0;
     }
     return buf;
   }
@@ -800,9 +794,9 @@ public class SidecarCachingInputStream extends InputStream
   private int readInternal(byte[] bytesBuffer, int offset, int length, long position,
       boolean isPositionedRead) throws IOException {
 
-    boolean toCacheThread = cacheOnReadThread();
+    boolean isScan = scanDetected();
     boolean oldCacheOnRead = cacheOnRead;
-    cacheOnRead = cacheOnRead && toCacheThread;
+    cacheOnRead = cacheOnRead && !isScan;
     try {
       // Adjust length
       // just in case
@@ -829,8 +823,10 @@ public class SidecarCachingInputStream extends InputStream
       byte[] buf = getBuffer((int) pageRange.size);
 
       // For positional reads we read only what is required
-      // For non-positional we do prefetching
-      int toRead = !isPositionedRead ? (int) Math.min(buf.length, this.fileLength - pageRange.start)
+      // For non-positional or if scan was detected we do prefetching ONLY if requested position
+      // greater than buffer end offset
+      int toRead = !isPositionedRead || scanDetected?
+          (int) Math.min(buf.length, this.fileLength - pageRange.start)
           : (int) Math.min(pageRange.size, this.fileLength - pageRange.start);
 
       // TODO: handle prefetching in external sources
@@ -842,11 +838,16 @@ public class SidecarCachingInputStream extends InputStream
       read = readFullyFromWriteCacheFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
       if (read < 0) {
         read = readFullyFromRemoteFS(pageRange.start, buf, 0, toRead, isPositionedRead, length);
+        if (!scanDetected) {
+          // File was evicted from write cache
+          // We need to enforce cacheOnRead
+          oldCacheOnRead = true;
+          cacheOnRead = true;          
+        }
       }
       // TODO: check on read > 0?
       this.bufferStartOffset = pageRange.start;
       this.bufferEndOffset = pageRange.start + read;
-
       // Save to the page cache
       long pos = pageRange.start;
       for (int i = 0; i < in_cache.length; i++) {
@@ -875,7 +876,6 @@ public class SidecarCachingInputStream extends InputStream
       cacheOnRead = oldCacheOnRead;
     }
   }
-  
   
   /**
    * This in fact reads from read cache
@@ -991,10 +991,17 @@ public class SidecarCachingInputStream extends InputStream
   private int readFromRemoteFS(long position, byte[] buffer, int bufOffset, int len)
       throws IOException {
     FSDataInputStream is = getRemoteStream();
+    long start = System.nanoTime();
     int read = is.read(position, buffer, bufOffset, len);
+    long end = System.nanoTime();
     if (read > 0) {
       this.stats.addTotalReadRequestsFromRemote(1);
       this.stats.addTotalBytesReadRemote(read);
+      this.stats.addTotalRemoteFSReadTime(end - start);
+      if (scanDetected) {
+        this.stats.addTotalReadRequestsFromRemoteScan(1);
+        this.stats.addTotalBytesReadRemoteScan(read);
+      }
     }
     return read;
   }
@@ -1010,10 +1017,13 @@ public class SidecarCachingInputStream extends InputStream
       if (is == null) {
         return read;
       }
+      long start = System.nanoTime();
       read = is.read(position, buffer, bufOffset, len);
+      long end = System.nanoTime();
       if (read > 0) {
         this.stats.addTotalReadRequestsFromWriteCache(1);
         this.stats.addTotalBytesReadWriteCache(read);
+        this.stats.addTotalWriteCacheReadTime(end - start);
       }
     } catch(IOException e) {
       //TODO: better exception handling?
@@ -1032,9 +1042,16 @@ public class SidecarCachingInputStream extends InputStream
       int len, boolean isPositionedRead, int toAdvance)
       throws IOException {
     FSDataInputStream is = getRemoteStream();
+    long start = System.nanoTime();
     is.readFully(position, buffer, bufOffset, len);
+    long end = System.nanoTime();
     this.stats.addTotalReadRequestsFromRemote(1);
     this.stats.addTotalBytesReadRemote(len);
+    this.stats.addTotalRemoteFSReadTime(end - start);
+    if (scanDetected) {
+      this.stats.addTotalReadRequestsFromRemoteScan(1);
+      this.stats.addTotalBytesReadRemoteScan(len);
+    }
     return len;
   }
   
@@ -1049,9 +1066,12 @@ public class SidecarCachingInputStream extends InputStream
       if (is == null) {
         return -1;
       }
+      long start = System.nanoTime();
       is.readFully(position, buffer, bufOffset, len);
+      long end = System.nanoTime();
       this.stats.addTotalReadRequestsFromWriteCache(1);
       this.stats.addTotalBytesReadWriteCache(len);
+      this.stats.addTotalWriteCacheReadTime(end - start);
       return len;
     } catch(IOException e) {
       //TODO: better exception handling

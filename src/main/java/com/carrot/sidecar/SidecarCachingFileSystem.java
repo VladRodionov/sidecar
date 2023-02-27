@@ -1524,13 +1524,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public FSDataInputStream open(Path path, int bufferSize) throws IOException {
 
     final Path qPath = isQualified(path)? path: this.remoteFS.makeQualified(path);
-
     Callable<FSDataInputStream> remoteCall = () -> {
       return ((RemoteFileSystemAccess)remoteFS).openRemote(qPath, bufferSize);
     };
-    
     Callable<FSDataInputStream> cacheCall = () -> {return null;};
-    
     if (writeCacheEnabled) {
       Path writeCachePath = remoteToCachingPath(path);
       cacheCall = () -> {
@@ -1540,8 +1537,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     FileStatus status = getFileStatus(qPath);
     long length = status.getLen();
     boolean cacheOnRead = isCacheableFile(qPath, length);
-    /*DEBUG*/LOG.error("CACHE={} file {} in write cache={}", cacheOnRead,  qPath.getName(), 
-      inWriteCache(remoteToCachingPath(qPath)));
     ScanDetector sd = cacheOnRead && isScanDetectorEnabled()? 
         new ScanDetector(scanThreashold, dataPageSize): null;
     SidecarCachingInputStream scis = new SidecarCachingInputStream(dataCache, status, remoteCall, cacheCall,

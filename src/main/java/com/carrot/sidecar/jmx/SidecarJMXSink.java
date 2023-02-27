@@ -17,6 +17,7 @@
  */
 package com.carrot.sidecar.jmx;
 
+import com.carrot.cache.Cache;
 import com.carrot.sidecar.SidecarCachingFileSystem;
 import com.carrot.sidecar.util.Statistics;
 
@@ -72,6 +73,12 @@ public class SidecarJMXSink implements SidecarJMXSinkMBean{
   }
 
   @Override
+  public long gettotal_bytes_read_remote_fs_scan() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalBytesReadRemoteScan();
+  }
+  
+  @Override
   public long gettotal_bytes_read_data_cache() {
     Statistics stats = sidecar.getStatistics();
     return stats.getTotalBytesReadDataCache();
@@ -101,6 +108,12 @@ public class SidecarJMXSink implements SidecarJMXSinkMBean{
     return stats.getTotalReadRequestsFromRemote();
   }
 
+  @Override
+  public long gettotal_read_requests_remote_fs_scan() {
+    Statistics stats = sidecar.getStatistics();
+    return stats.getTotalReadRequestsFromRemoteScan();
+  }
+  
   @Override
   public long gettotal_read_requests_write_cache() {
     Statistics stats = sidecar.getStatistics();
@@ -147,5 +160,50 @@ public class SidecarJMXSink implements SidecarJMXSinkMBean{
   public long gettotal_files_opened_write_cache() {
     Statistics stats = sidecar.getStatistics();
     return stats.getTotalFilesOpenedInWriteCache();
+  }
+  
+  @Override
+  public long getio_data_cache_read_avg_time() {
+    Cache cache = SidecarCachingFileSystem.getDataCache();
+    long duration = cache.getEngine().getTotalIOReadDuration() / 1000;
+    return duration / cache.getTotalGets();
+  }
+  
+  @Override
+  public long getio_data_cache_read_avg_size() {
+    Cache cache = SidecarCachingFileSystem.getDataCache();
+    return cache.getTotalGetsSize() / cache.getTotalGets();
+  }
+  
+  @Override
+  public long getio_write_cache_read_avg_time() {
+    Statistics stats = sidecar.getStatistics();
+    long totalTime = stats.getTotalWriteCacheReadTime() / 1000;
+    long requests = stats.getTotalReadRequestsFromWriteCache();
+    return totalTime / requests;
+  }
+  
+  @Override
+  public long getio_write_cache_read_avg_size() {
+    Statistics stats = sidecar.getStatistics();
+    long totalBytes = stats.getTotalBytesReadWriteCache();
+    long requests = stats.getTotalReadRequestsFromWriteCache();
+    return totalBytes / requests;
+  }
+  
+  @Override
+  public long getio_remote_fs_read_avg_time() {
+    Statistics stats = sidecar.getStatistics();
+    long totalTime = stats.getTotalRemoteFSReadTime() / 1000;
+    long requests = stats.getTotalReadRequestsFromRemote();
+    return totalTime / requests;
+  }
+  
+  @Override
+  public long getio_remote_fs_read_avg_size() {
+    Statistics stats = sidecar.getStatistics();
+    long totalBytes = stats.getTotalBytesReadRemote();
+    long requests = stats.getTotalReadRequestsFromRemote();
+    return totalBytes / requests;
   }
 }
