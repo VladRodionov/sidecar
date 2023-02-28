@@ -772,11 +772,8 @@ public class SidecarCachingInputStream extends InputStream
       // Read ALL into I/O buffer
       buf = this.buffer;
     } else {
+      // Allocate new
       buf = new byte[size];
-      // TODO: analyze
-      //this.buffer = buf;
-      //this.bufferStartOffset = 0;
-      //this.bufferEndOffset = 0;
     }
     return buf;
   }
@@ -845,9 +842,6 @@ public class SidecarCachingInputStream extends InputStream
           cacheOnRead = true;          
         }
       }
-      // TODO: check on read > 0?
-      this.bufferStartOffset = pageRange.start;
-      this.bufferEndOffset = pageRange.start + read;
       // Save to the page cache
       long pos = pageRange.start;
       for (int i = 0; i < in_cache.length; i++) {

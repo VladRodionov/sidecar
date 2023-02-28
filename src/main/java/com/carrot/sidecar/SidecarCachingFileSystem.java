@@ -855,7 +855,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
         LOG.error(e.getMessage());
       }
     }
-
     if (dataCache == null) {
       // Create new instance
       dataCache = new Cache(type.getCacheName(), config);
@@ -863,7 +862,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     }
     SidecarConfig sconfig = SidecarConfig.getInstance();
     boolean metricsEnabled = sconfig.isJMXMetricsEnabled();
-
     if (metricsEnabled) {
       String domainName = sconfig.getJMXMetricsDomainName();
       LOG.info("SidecarCachingFileSystem JMX enabled for data cache");
@@ -942,21 +940,24 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return writeCacheFS.makeQualified(cachePath);
   }
   
-  // Not used yet
   Path cachingToRemotePath(Path cachingPath) {
-    
     URI cachingURI = cachingPath.toUri();
     String path = cachingURI.getPath();
-    URI cachingFSURI = writeCacheFS.getUri();
-    String cachePath = cachingFSURI.getPath();
+    URI cPath = writeCacheFS.getWorkingDirectory().toUri();
+    String cachePath = cPath.getPath();
     int index = path.indexOf(cachePath);
-    String relativePath = path.substring(index + cachePath.length());
+    URI remoteURI = this.remoteFS.getUri();
+    String host = remoteURI.getHost();
+    String scheme = remoteURI.getScheme();
+    int len = host.length() + scheme.length() + 2;
+    String relativePath = path.substring(index + cachePath.length() + len);
     if (!relativePath.startsWith(File.separator)) {
       relativePath = File.separator + relativePath;
     }
     return this.remoteFS.makeQualified(new Path(relativePath));
   }
 
+  
   /**
    * Single thread only, but I think we are OK?
    */
@@ -1204,13 +1205,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   @Override
-  public void closingRemote(SidecarCachingOutputStream stream) {
-        
+  public void closingRemote(SidecarCachingOutputStream stream) {     
     final Path path = this.remoteFS.makeQualified(stream.getRemotePath());
     long length = 0;
-    
     this.stats.addTotalFilesCreated(1);
-    
     try {
       length = stream.length();
     } catch(IOException e) {
@@ -1219,7 +1217,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.debug("Closing remote {} len={}", path, length);
     // Update data set size
     dataSetSizeOnDisk.addAndGet(length);
-    
     if (writeCacheEnabled) {
       // It is save to update meta first in the cache
       // because write cache has already file ready to read
