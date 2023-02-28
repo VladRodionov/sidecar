@@ -20,7 +20,7 @@ public class TestSidecarCachingInputStreamOffheap extends TestSidecarCachingInpu
   @Override 
   public void setup() throws IOException {
     super.setup();
-    this.cacheType = SidecarCacheType.OFFHEAP;
+    this.cacheType = SidecarDataCacheType.OFFHEAP;
     this.offheapCacheSize = 5 * (1L << 30);
   }
 

@@ -141,18 +141,18 @@ public class TestUtils {
     config.setStartIndexNumberOfSlotsPower(SidecarConfig.DATA_CACHE_OFFHEAP_NAME, 4);
     config.setStartIndexNumberOfSlotsPower(SidecarConfig.META_CACHE_NAME, 4);
     SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
-    SidecarCacheType cacheType = sconfig.getDataCacheType();
+    SidecarDataCacheType cacheType = sconfig.getDataCacheType();
     return createCache(config, cacheType);
   }
   
-  private static Cache createCache(CarrotConfig config, SidecarCacheType cacheType) throws IOException {
+  private static Cache createCache(CarrotConfig config, SidecarDataCacheType cacheType) throws IOException {
     switch (cacheType) {
       case FILE: 
       case OFFHEAP:
         return new Cache(cacheType.getCacheName(), config);
       case HYBRID:
-        Cache parent = new Cache(SidecarCacheType.OFFHEAP.getCacheName(), config);
-        Cache victim = new Cache(SidecarCacheType.FILE.getCacheName(), config);
+        Cache parent = new Cache(SidecarDataCacheType.OFFHEAP.getCacheName(), config);
+        Cache victim = new Cache(SidecarDataCacheType.FILE.getCacheName(), config);
         parent.setVictimCache(victim);
         return parent;
     }
@@ -173,9 +173,9 @@ public class TestUtils {
     
     String[] newTypes = new String[types.length + 3];
     System.arraycopy(types, 0, newTypes, 0, types.length);
-    newTypes[newTypes.length - 3] = SidecarCacheType.FILE.getType();
-    newTypes[newTypes.length - 2] = SidecarCacheType.OFFHEAP.getType();
-    newTypes[newTypes.length - 1] = SidecarCacheType.OFFHEAP.getType();;
+    newTypes[newTypes.length - 3] = SidecarDataCacheType.FILE.getType();
+    newTypes[newTypes.length - 2] = SidecarDataCacheType.OFFHEAP.getType();
+    newTypes[newTypes.length - 1] = SidecarDataCacheType.OFFHEAP.getType();;
     
     
     String cacheNames = com.carrot.sidecar.util.Utils.join(newNames, ",");

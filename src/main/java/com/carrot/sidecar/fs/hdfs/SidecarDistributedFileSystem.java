@@ -102,13 +102,13 @@ public class SidecarDistributedFileSystem extends DistributedFileSystem implemen
 
   @Override
   public HdfsDataOutputStreamBuilder createFile(Path path) {
-    LOG.error("***Sidecar CREATEFILE(Path path)");
+    LOG.error("***Sidecar CREATEFILE:{}", path);
     return super.createFile(path);
   }
 
   @Override
   public HdfsDataOutputStreamBuilder appendFile(Path path) {
-    LOG.error("***Sidecar APPENDFILE(Path path)");
+    LOG.error("***Sidecar APPENDFILE:{}", path);
     return super.appendFile(path);
   }
 

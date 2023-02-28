@@ -20,7 +20,7 @@ public class TestSidecarCachingInputStreamHybrid extends TestSidecarCachingInput
   @Override 
   public void setup() throws IOException {
     super.setup();
-    this.cacheType = SidecarCacheType.HYBRID;
+    this.cacheType = SidecarDataCacheType.HYBRID;
     this.fileCacheSize = 4 * (1L << 30);
     this.offheapCacheSize = 1 * (1L << 30);
   }

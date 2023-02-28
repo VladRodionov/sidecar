@@ -122,7 +122,7 @@ public class TestSidecarCachingOutputStream {
     cacheConfig.setJMXMetricsEnabled(false);
     cacheConfig.setWriteCacheMode(useWriteCache? WriteCacheMode.ASYNC_CLOSE: WriteCacheMode.DISABLED);
     cacheConfig.setTestMode(true); // do not install shutdown hooks
-    cacheConfig.setDataCacheType(SidecarCacheType.FILE);
+    cacheConfig.setDataCacheType(SidecarDataCacheType.FILE);
     if (useWriteCache) {
       cacheConfig.setWriteCacheSizePerInstance(writeCacheSize);
       cacheConfig.setWriteCacheURI(writeCacheDirectory);

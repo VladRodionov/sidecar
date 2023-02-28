@@ -17,15 +17,16 @@
  */
 package com.carrot.sidecar;
 
-public enum SidecarCacheType {
+public enum SidecarDataCacheType {
   
+  DISABLED("disabled"),
   OFFHEAP("offheap"),
   FILE("file"),
   HYBRID("hybrid");
   
   private final String type;
   
-  SidecarCacheType(String type) {
+  SidecarDataCacheType(String type) {
     this.type = type;
   }
   
@@ -41,7 +42,7 @@ public enum SidecarCacheType {
     }
   }
   
-  public static SidecarCacheType defaultType() {
-    return SidecarCacheType.FILE;
+  public static SidecarDataCacheType defaultType() {
+    return SidecarDataCacheType.FILE;
   }
 }

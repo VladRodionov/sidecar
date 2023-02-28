@@ -93,7 +93,7 @@ public class TestSidecarCachingInputStreamBase {
       
   protected int scavThreads = 1;
   
-  protected SidecarCacheType cacheType = SidecarCacheType.OFFHEAP;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.OFFHEAP;
     
   protected boolean aqEnabledFile = true;
   
@@ -170,7 +170,7 @@ public class TestSidecarCachingInputStreamBase {
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarCacheType.FILE)
+      .setDataCacheType(SidecarDataCacheType.FILE)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
@@ -209,7 +209,7 @@ public class TestSidecarCachingInputStreamBase {
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarCacheType.OFFHEAP)
+      .setDataCacheType(SidecarDataCacheType.OFFHEAP)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

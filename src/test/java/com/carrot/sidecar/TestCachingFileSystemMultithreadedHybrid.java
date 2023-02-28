@@ -26,7 +26,7 @@ import com.carrot.cache.util.CarrotConfig;
 
 public class TestCachingFileSystemMultithreadedHybrid extends TestCachingFileSystemMultithreadedBase{
 
-  protected SidecarCacheType cacheType = SidecarCacheType.HYBRID;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.HYBRID;
 
   @Override
   protected Configuration getConfiguration() {
@@ -34,7 +34,7 @@ public class TestCachingFileSystemMultithreadedHybrid extends TestCachingFileSys
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarCacheType.HYBRID)
+      .setDataCacheType(SidecarDataCacheType.HYBRID)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

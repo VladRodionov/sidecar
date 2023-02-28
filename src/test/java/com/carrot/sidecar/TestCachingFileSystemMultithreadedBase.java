@@ -63,7 +63,7 @@ public abstract class TestCachingFileSystemMultithreadedBase {
   
   protected URI writeCacheDirectory;  
   
-  protected SidecarCacheType cacheType = SidecarCacheType.OFFHEAP;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.OFFHEAP;
   
   /**
    * Subclasses can override

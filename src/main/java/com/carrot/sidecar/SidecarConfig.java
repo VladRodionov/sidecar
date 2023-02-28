@@ -137,7 +137,7 @@ public class SidecarConfig extends Properties {
   
   public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
   
-  public final static SidecarCacheType DEFAULT_DATA_CACHE_TYPE = SidecarCacheType.FILE;
+  public final static SidecarDataCacheType DEFAULT_DATA_CACHE_TYPE = SidecarDataCacheType.FILE;
   
   public final static boolean DEFAULT_SIDECAR_PERSISTENT_CACHE = true;
   
@@ -422,12 +422,12 @@ public class SidecarConfig extends Properties {
    * Get data cache type
    * @return data cache type
    */
-  public SidecarCacheType getDataCacheType() {
+  public SidecarDataCacheType getDataCacheType() {
     String value = getProperty(SIDECAR_DATA_CACHE_TYPE_KEY);
     if (value == null) {
       return DEFAULT_DATA_CACHE_TYPE;
     }
-    return SidecarCacheType.valueOf(value.toUpperCase());
+    return SidecarDataCacheType.valueOf(value.toUpperCase());
   }
   
   /**
@@ -435,7 +435,7 @@ public class SidecarConfig extends Properties {
    * @param type data cache type
    * @return self
    */
-  public SidecarConfig setDataCacheType(SidecarCacheType type) {
+  public SidecarConfig setDataCacheType(SidecarDataCacheType type) {
     setProperty(SIDECAR_DATA_CACHE_TYPE_KEY, type.getType());
     return this;
   }

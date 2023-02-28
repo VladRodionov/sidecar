@@ -27,7 +27,7 @@ import com.carrot.cache.util.CarrotConfig;
 public class TestCachingFileSystemFile  extends TestCachingFileSystemBase{
 
   
-  protected SidecarCacheType cacheType = SidecarCacheType.FILE;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.FILE;
 
   @Override
   protected Configuration getConfiguration() {
@@ -35,7 +35,7 @@ public class TestCachingFileSystemFile  extends TestCachingFileSystemBase{
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarCacheType.FILE)
+      .setDataCacheType(SidecarDataCacheType.FILE)
       .setJMXMetricsEnabled(true);
     
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();

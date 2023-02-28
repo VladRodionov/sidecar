@@ -649,10 +649,16 @@ public class SidecarCachingInputStream extends InputStream
   
   private long dataPageGetRange(byte[] key, int rangeStart, int rangeSize, byte[] buffer, int bufferOffset) 
       throws IOException {
-      return cache.getRange(key, 0, key.length, rangeStart, rangeSize, true, buffer, bufferOffset);
+    if (cache == null) {
+      return -1;
+    }
+    return cache.getRange(key, 0, key.length, rangeStart, rangeSize, true, buffer, bufferOffset);
   }
   
   private boolean dataPageExists(byte[] key) {
+    if (cache == null) {
+      return false;
+    }
     return cache.exists(key);
   }
 
@@ -660,7 +666,7 @@ public class SidecarCachingInputStream extends InputStream
       byte[] value, int valueOffset, int valueSize, long fileOffset /* to detect scan*/)
     throws IOException
   {
-    if (!cacheOnRead) {
+    if (!cacheOnRead || cache == null) {
       return false;
     }
     if (this.sd != null) {

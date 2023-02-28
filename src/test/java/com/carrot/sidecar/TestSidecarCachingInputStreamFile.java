@@ -20,7 +20,7 @@ public class TestSidecarCachingInputStreamFile extends TestSidecarCachingInputSt
   @Override 
   public void setup() throws IOException {
     super.setup();
-    this.cacheType = SidecarCacheType.FILE;
+    this.cacheType = SidecarDataCacheType.FILE;
   }
 
 }

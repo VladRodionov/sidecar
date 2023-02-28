@@ -97,7 +97,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * Data cache type (offheap, file, hybrid)
    */
   
-  private static SidecarCacheType dataCacheType; 
+  private static SidecarDataCacheType dataCacheType; 
+  
+  private static boolean cacheEnabled = true;
   /*
    *  Caches remote file lengths by file path
    */
@@ -346,11 +348,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     this.metaCacheable = fs instanceof MetaDataCacheable;
   }
 
-  private void setDataCacheType(CarrotConfig config, SidecarCacheType type) {
-    if (type == SidecarCacheType.HYBRID) {
-      addCacheType(config, SidecarCacheType.OFFHEAP.getCacheName(), SidecarCacheType.OFFHEAP.getType());
-      addCacheType(config, SidecarCacheType.FILE.getCacheName(), SidecarCacheType.FILE.getType());
-    } else {
+  private void setDataCacheType(CarrotConfig config, SidecarDataCacheType type) {
+    if (type == SidecarDataCacheType.HYBRID) {
+      addCacheType(config, SidecarDataCacheType.OFFHEAP.getCacheName(), SidecarDataCacheType.OFFHEAP.getType());
+      addCacheType(config, SidecarDataCacheType.FILE.getCacheName(), SidecarDataCacheType.FILE.getType());
+    } else if (type != SidecarDataCacheType.DISABLED){
       addCacheType(config, type.getCacheName(), type.getType());
     }
   }
@@ -414,6 +416,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * @param b
    */
   public void setMetaCacheEnabled(boolean b) {
+    if (dataCacheType == SidecarDataCacheType.DISABLED) {
+      return; // do nothing
+    }
     this.metaCacheable = b;
   }
   
@@ -523,7 +528,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       
       final SidecarConfig sconfig = SidecarConfig.fromHadoopConfiguration(configuration);
       dataCacheType = sconfig.getDataCacheType();
-      
+      cacheEnabled = dataCacheType != SidecarDataCacheType.DISABLED;
+      if (!cacheEnabled) {
+        this.metaCacheable = false;
+      }
       // Add two caches (sidecar-data, sidecar-meta) types to the configuration
       setDataCacheType(config, dataCacheType);      
       // meta cache is always offheap
@@ -590,7 +598,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
                 LOG.error(e.getMessage(), e);
               }
             }));
-            if (sconfig.isCachePersistent()) {
+            if (sconfig.isCachePersistent() && cacheEnabled) {
               LOG.info("Shutdown hook installed for cache[{}]", dataCache.getName());
               LOG.info("Shutdown hook installed for cache[{}]", metaCache.getName());
             }
@@ -693,6 +701,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
  
   private boolean inWriteCache(Path p) {
+    if (!writeCacheEnabled) {
+      return false;
+    }
     boolean result = writeCacheFileList.exists(p.toString());
     if (result) {
       this.stats.addTotalFilesOpenedInWriteCache(1);
@@ -702,10 +713,11 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   
   private boolean isCacheableFile(Path p, long size) {
     p = writeCacheEnabled? remoteToCachingPath(p): p;
+    boolean inWC = inWriteCache(p);
     switch(dataCacheMode) {
       case ALL: return true;
-      case NOT_IN_WRITE_CACHE: return writeCacheEnabled?!inWriteCache(p): true;
-      case MINSIZE: return size > this.minSizeToCache || writeCacheEnabled && !inWriteCache(p);
+      case NOT_IN_WRITE_CACHE: return writeCacheEnabled ? !inWC: true;
+      case MINSIZE: return size > this.minSizeToCache || writeCacheEnabled && !inWC;
     }
     return true;
   }
@@ -804,7 +816,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     LOG.info("Saved sidecar sidecar.stats");
   }
   
-  private void loadMetaCache() throws IOException{
+  private Cache loadMetaCache() throws IOException{
+    if (dataCacheType == SidecarDataCacheType.DISABLED) {
+      return null;
+    }
     CarrotConfig config = CarrotConfig.getInstance();
     SidecarConfig sconfig = SidecarConfig.getInstance();
     try {
@@ -837,9 +852,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       String domainName = sconfig.getJMXMetricsDomainName();
       metaCache.registerJMXMetricsSink(domainName);
     }  
+    return metaCache;
   }
 
-  private Cache loadDataCache(SidecarCacheType type) throws IOException {
+  private Cache loadDataCache(SidecarDataCacheType type) throws IOException {
+    if (type == SidecarDataCacheType.DISABLED) {
+      return null;
+    }
     CarrotConfig config = CarrotConfig.getInstance();
     boolean isPersistent = SidecarConfig.getInstance().isCachePersistent();
     Cache dataCache = null;
@@ -871,12 +890,15 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   private Cache loadDataCache() throws IOException {
-    if (dataCacheType != SidecarCacheType.HYBRID) {
+    if (dataCacheType == SidecarDataCacheType.DISABLED) {
+      return null;
+    }
+    if (dataCacheType != SidecarDataCacheType.HYBRID) {
       dataCache = loadDataCache(dataCacheType);
       return dataCache;
     } else {
-      dataCache = loadDataCache(SidecarCacheType.OFFHEAP);
-      Cache victimCache = loadDataCache(SidecarCacheType.FILE);
+      dataCache = loadDataCache(SidecarDataCacheType.OFFHEAP);
+      Cache victimCache = loadDataCache(SidecarDataCacheType.FILE);
       dataCache.setVictimCache(victimCache);
       return dataCache;
     }
@@ -900,6 +922,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
 
   void saveDataCache() throws IOException {
+    if (dataCacheType == SidecarDataCacheType.DISABLED) {
+      return;
+    }
     long start = System.currentTimeMillis();
     LOG.info("Shutting down cache[{}]", DATA_CACHE_FILE_NAME);
     dataCache.shutdown();
@@ -908,6 +933,9 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   void saveMetaCache() throws IOException {
+    if (dataCacheType == SidecarDataCacheType.DISABLED) {
+      return;
+    }
     long start = System.currentTimeMillis();
     LOG.info("Shutting down cache[{}]", META_CACHE_NAME);
     metaCache.shutdown();
@@ -916,9 +944,13 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   }
   
   public static void dispose() {
-    dataCache.dispose();
-    metaCache.dispose();
-    cachedFS.clear();
+    if (dataCacheType != SidecarDataCacheType.DISABLED) {
+      dataCache.dispose();
+      metaCache.dispose();
+    }
+    if (cachedFS != null) {
+      cachedFS.clear();
+    }
     dataCache = null;
     metaCache = null;
     writeCacheSize.set(0);
@@ -1167,7 +1199,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
    * caching servers
    *********************************/
   final void dataDeleteFile(Path path, FileStatus status) {
-    if (status == null) {
+    if (status == null || !cacheEnabled) {
       return;
     }
     final Path qualified = isQualified(path)? path: this.remoteFS.makeQualified(path);
@@ -1594,8 +1626,6 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   public FSDataOutputStream create(Path f, FsPermission permission, EnumSet<CreateFlag> cflags,
       int bufferSize, short replication, long blockSize, Progressable progress,
       ChecksumOpt checksumOpt) throws IOException {
-    
-    LOG.debug("Sidecar create file: {}", f);
     FSDataOutputStream remoteOut = 
        ((RemoteFileSystemAccess)remoteFS).createRemote(f, permission, cflags, bufferSize, 
          replication, blockSize, progress, checksumOpt);
