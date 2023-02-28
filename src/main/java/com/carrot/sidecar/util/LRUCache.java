@@ -27,7 +27,14 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class LRUCache<K, V> {
+  private static final Logger LOG = LoggerFactory.getLogger(LRUCache.class);
+
   public static String NAME = "lru-cache";
   public static String FILE_NAME = "write-cache-file-list.cache";
   private static final int INIT_CAPACITY = 2000;
@@ -89,6 +96,19 @@ public class LRUCache<K, V> {
         retValue = it.next();
       }
       return retValue;
+    }
+  }
+  
+  public void debug(FileSystem fs) throws IllegalArgumentException, IOException {
+    synchronized (mLRUCache) {
+      Iterator<K> it = mLRUCache.keySet().iterator();
+      LOG.error("WRITE CACHE LIST STARTS");
+      while (it.hasNext()) {
+        String path = (String) it.next();
+        LOG.error("WRITE CACHE LIST {} time={}", path,
+          fs.getFileStatus(new Path(path)).getModificationTime());
+      }
+      LOG.error("WRITE CACHE LIST ENDS");
     }
   }
   

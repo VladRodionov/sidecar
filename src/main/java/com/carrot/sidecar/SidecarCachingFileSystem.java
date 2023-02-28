@@ -979,8 +979,10 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       // else
       t = new Thread(() -> {
         try {
+          // Wait 10 seconds until (possibly) clean up after compaction
+          Thread.sleep(10000);
           evictFiles();
-        } catch (IOException e) {
+        } catch (Exception e) {
           LOG.error("File evictor", e);
         }
       });
@@ -1200,7 +1202,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     if (isWriteCacheEnabled()) {
       writeCacheSize.addAndGet(bytes);
       writeCacheBytesWritten.addAndGet(bytes);
-      checkEviction();
+      //checkEviction();
     }
   }
 
@@ -1230,6 +1232,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
           FSDataOutputStream os = stream.getRemoteStream();
           os.close();
           deleteMoniker(remoteToCachingPath(path));
+          checkEviction();
         } catch (IOException e) {
           // TODO - how to handle exception?
           LOG.error("Closing remote stream", e);
