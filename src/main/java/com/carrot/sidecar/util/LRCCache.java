@@ -32,8 +32,14 @@ import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LRUCache<K, V> {
-  private static final Logger LOG = LoggerFactory.getLogger(LRUCache.class);
+/**
+ * Least Recently Created (or Inserted) cache  
+ *
+ * @param <K> key class
+ * @param <V> value class
+ */
+public class LRCCache<K, V> {
+  private static final Logger LOG = LoggerFactory.getLogger(LRCCache.class);
 
   public static String NAME = "lru-cache";
   public static String FILE_NAME = "write-cache-file-list.cache";
@@ -41,11 +47,11 @@ public class LRUCache<K, V> {
   private static final float INIT_LOAD_FACTOR = 0.75f;
   private static final boolean ACCESS_ORDERED = false;
 
-  protected Map<K, V> mLRUCache =
+  protected Map<K, V> mLRCCache =
       Collections.synchronizedMap(new LinkedHashMap<>(INIT_CAPACITY,
           INIT_LOAD_FACTOR, ACCESS_ORDERED));
   
-  public LRUCache() {}
+  public LRCCache() {}
   
   /**
    * Put key value
@@ -54,7 +60,7 @@ public class LRUCache<K, V> {
    * @return previous value
    */
   public V put(K key, V value) {
-    return mLRUCache.put(key, value);
+    return mLRCCache.put(key, value);
   }
   
   /**
@@ -63,7 +69,7 @@ public class LRUCache<K, V> {
    * @return value object
    */
   public V get(K key) {
-    return mLRUCache.get(key);
+    return mLRCCache.get(key);
   }
   
   /**
@@ -72,7 +78,7 @@ public class LRUCache<K, V> {
    * @return value
    */
   public V remove(K key) {
-    return mLRUCache.remove(key);
+    return mLRCCache.remove(key);
   }
   
   /**
@@ -81,7 +87,7 @@ public class LRUCache<K, V> {
    * @return true or false
    */
   public boolean exists(K key) {
-    return mLRUCache.containsKey(key);
+    return mLRCCache.containsKey(key);
   }
   
   /**
@@ -89,8 +95,8 @@ public class LRUCache<K, V> {
    * @return eviction candidate
    */
   public K evictionCandidate() {
-    synchronized(mLRUCache) {
-      Iterator<K> it = mLRUCache.keySet().iterator();
+    synchronized(mLRCCache) {
+      Iterator<K> it = mLRCCache.keySet().iterator();
       K retValue = null;
       if (it.hasNext()) {
         retValue = it.next();
@@ -100,8 +106,8 @@ public class LRUCache<K, V> {
   }
   
   public void debug(FileSystem fs) throws IllegalArgumentException, IOException {
-    synchronized (mLRUCache) {
-      Iterator<K> it = mLRUCache.keySet().iterator();
+    synchronized (mLRCCache) {
+      Iterator<K> it = mLRCCache.keySet().iterator();
       LOG.error("WRITE CACHE LIST STARTS");
       while (it.hasNext()) {
         String path = (String) it.next();
@@ -117,12 +123,12 @@ public class LRUCache<K, V> {
    * @return size
    */
   public int size() {
-    return mLRUCache.size();
+    return mLRCCache.size();
   }
   
   public void save(OutputStream os) throws IOException {
     ObjectOutputStream oos = new ObjectOutputStream(os);
-    oos.writeObject(mLRUCache);
+    oos.writeObject(mLRCCache);
     oos.close();
   }
   
@@ -130,7 +136,7 @@ public class LRUCache<K, V> {
   public void load(InputStream is) throws IOException{
     ObjectInputStream ois = new ObjectInputStream(is);
     try {
-      this.mLRUCache = (Map<K, V>) ois.readObject();
+      this.mLRCCache = (Map<K, V>) ois.readObject();
     } catch (ClassNotFoundException e) {
       throw new IOException(e);
     }

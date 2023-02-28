@@ -79,7 +79,7 @@ import com.carrot.cache.util.UnsafeAccess;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.jmx.SidecarJMXSink;
 import com.carrot.sidecar.jmx.SidecarSiteJMXSink;
-import com.carrot.sidecar.util.LRUCache;
+import com.carrot.sidecar.util.LRCCache;
 import com.carrot.sidecar.util.ScanDetector;
 import com.carrot.sidecar.util.Statistics;
 
@@ -106,7 +106,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   /*
    *  LRU cache for cached on write filenames with their lengths (if enabled) 
    */
-  private static LRUCache<String, Long> writeCacheFileList;
+  private static LRCCache<String, Long> writeCacheFileList;
   
   /*
    * Caching {FS.URI, sidecar instance}  
@@ -745,19 +745,19 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       return;
     }
     CarrotConfig config = CarrotConfig.getInstance();
-    String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
-    String fileName = snapshotDir + File.separator + LRUCache.FILE_NAME;
+    String snapshotDir = config.getSnapshotDir(LRCCache.NAME);
+    String fileName = snapshotDir + File.separator + LRCCache.FILE_NAME;
     File file = new File(fileName);
-    writeCacheFileList = new LRUCache<>();
+    writeCacheFileList = new LRCCache<>();
 
     if (file.exists()) {
       FileInputStream fis = new FileInputStream(file);
       DataInputStream dis = new DataInputStream(fis);
       writeCacheFileList.load(dis);
       dis.close();
-      LOG.info("Loaded cache[{}]", LRUCache.NAME);
+      LOG.info("Loaded cache[{}]", LRCCache.NAME);
     } else {
-      LOG.info("Created new cache[{}]", LRUCache.NAME);
+      LOG.info("Created new cache[{}]", LRCCache.NAME);
     }
   }
 
@@ -885,17 +885,17 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
   void saveWriteCacheFileListCache() throws IOException {
     if (writeCacheFileList != null) {
       long start = System.currentTimeMillis();
-      LOG.info("Shutting down cache[{}]", LRUCache.NAME);
+      LOG.info("Shutting down cache[{}]", LRCCache.NAME);
       CarrotConfig config = CarrotConfig.getInstance();
-      String snapshotDir = config.getSnapshotDir(LRUCache.NAME);
+      String snapshotDir = config.getSnapshotDir(LRCCache.NAME);
       FileOutputStream fos = new FileOutputStream(snapshotDir + 
-      File.separator + LRUCache.FILE_NAME);
+      File.separator + LRCCache.FILE_NAME);
       // Save total write cache size
       DataOutputStream dos = new DataOutputStream(fos);
       writeCacheFileList.save(dos);
       // do not close - it was closed already
       long end = System.currentTimeMillis();
-      LOG.info("Shutting down cache[{}] done in {}ms",LRUCache.NAME , (end - start));
+      LOG.info("Shutting down cache[{}] done in {}ms",LRCCache.NAME , (end - start));
     }
   }
 
@@ -1404,7 +1404,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
     return metaCache;
   }
   
-  public static LRUCache<String,Long> getWriteCacheFileListCache() {
+  public static LRCCache<String,Long> getWriteCacheFileListCache() {
     return writeCacheFileList;
   }
   

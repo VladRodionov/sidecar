@@ -45,7 +45,7 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
-import com.carrot.sidecar.util.LRUCache;
+import com.carrot.sidecar.util.LRCCache;
 import com.esotericsoftware.kryo.kryo5.Kryo;
 import com.esotericsoftware.kryo.kryo5.io.Output;
 
@@ -270,7 +270,7 @@ public class TestSidecarCachingFileSystem {
     Path p = new Path(workDir, "test-file");
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    LRUCache<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
+    LRCCache<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
     LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);
