@@ -150,6 +150,8 @@ public abstract class TestCachingFileSystemMultithreadedBase {
     carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSegmentSize);
     
     FileSystem fs = FileSystem.get(new URI ("file:///"), conf);
+    URI workingDir = createTempDirectory("temp").toUri();
+    fs.setWorkingDirectory(new Path(workingDir));
     // Set meta caching enabled
     SidecarCachingFileSystem cfs = ((SidecarLocalFileSystem) fs).getCachingFileSystem();
     cfs.setMetaCacheEnabled(true);
