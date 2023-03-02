@@ -51,7 +51,7 @@ import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
  */
 public abstract class TestCachingFileSystemBase {
   
-  private static final Logger LOG = LoggerFactory.getLogger(TestCachingFileSystemBase.class);
+  protected static final Logger LOG = LoggerFactory.getLogger(TestCachingFileSystemBase.class);
 
   protected FileSystem fs;
   
@@ -79,7 +79,7 @@ public abstract class TestCachingFileSystemBase {
   
   protected long metaCacheSize = 1L << 30;
   
-  protected int metaCacheSementSize = 4 * (1 << 20);
+  protected int metaCacheSegmentSize = 4 * (1 << 20);
   
   protected double zipfAlpha = 0.9;
   
@@ -88,7 +88,7 @@ public abstract class TestCachingFileSystemBase {
   protected int pageSize = 1 << 16; // 64KB (For HBase)
   // If access is random buffer size must be small
   // reads must be aligned to a page size
-  protected int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
+  protected int ioBufferSize = 4 * pageSize;//2 << 20; // 2MB
       
   protected int scavThreads = 1;
       
@@ -162,7 +162,7 @@ public abstract class TestCachingFileSystemBase {
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     // Set meta cache 
     carrotCacheConfig.setCacheMaximumSize(SidecarConfig.META_CACHE_NAME, metaCacheSize);
-    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSementSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSegmentSize);
     
     FileSystem fs = FileSystem.get(extDirectory, conf);
     // Set meta caching enabled
@@ -176,7 +176,8 @@ public abstract class TestCachingFileSystemBase {
   @Test
   public void testCRUD() throws IOException {
     LOG.info("Test Create - Update - Rename - Delete file");
-    Path p = new Path(new Path(extDirectory.toString()), "testfile");
+    Path workingDir = fs.getWorkingDirectory();
+    Path p = new Path(workingDir, "testfile");
     FSDataOutputStream os = fs.create(p);
     
     byte[] buf = new byte[1 << 18];// 256K, 4 data pages
@@ -238,7 +239,7 @@ public abstract class TestCachingFileSystemBase {
     Cache dataCache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
     
-    Path newPath = new Path(new Path(extDirectory.toString()), "testfile1");
+    Path newPath = new Path(workingDir, "testfile1");
     boolean b = fs.rename(p, newPath);
     
     assertTrue(b);
@@ -332,8 +333,9 @@ public abstract class TestCachingFileSystemBase {
   @Test
   public void testDeleteWriteCachedFileWhileReading() throws IOException {
     LOG.info("Test Create - Delete file while reading data");
-    Path p = new Path(new Path(extDirectory.toString()), "testfile");
-    FSDataOutputStream os = fs.create(p);
+    Path workingDir = fs.getWorkingDirectory();
+    Path p = new Path(workingDir, "testfile");
+    FSDataOutputStream os = fs.create(p, true);
     
     byte[] buf = new byte[1 << 18];// 256K, 4 data pages
     Random r = new Random();
@@ -377,7 +379,7 @@ public abstract class TestCachingFileSystemBase {
     assertEquals(0, (int) fromRemoteFS);
     assertEquals(0, (int) fromCache);
     // We read the whole io buffer, because its sequential access
-    assertEquals(buf.length, (int) fromWriteCache);
+    assertEquals(ioBufferSize, (int) fromWriteCache);
     // Delete cached file
     sidecar.evictDataPages(p, fst);
     boolean result = sidecar.deleteFromWriteCache(p);
@@ -405,7 +407,8 @@ public abstract class TestCachingFileSystemBase {
   @Test
   public void testSaveLoad() throws IOException{
     LOG.info("Test Create - Read - Save - Load - Read ");
-    Path p = new Path(new Path(extDirectory.toString()), "testfile");
+    Path workingDir = fs.getWorkingDirectory();
+    Path p = new Path(workingDir, "testfile");
     FSDataOutputStream os = fs.create(p);
     
     byte[] buf = new byte[1 << 18];// 256K, 4 data pages

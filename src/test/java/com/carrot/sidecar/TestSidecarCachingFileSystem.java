@@ -45,6 +45,7 @@ import com.carrot.cache.Cache;
 import com.carrot.cache.util.CarrotConfig;
 import com.carrot.cache.util.Utils;
 import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
+import com.carrot.sidecar.fs.s3a.SidecarS3AFileSystem;
 import com.carrot.sidecar.util.LRCCache;
 import com.esotericsoftware.kryo.kryo5.Kryo;
 import com.esotericsoftware.kryo.kryo5.io.Output;
@@ -80,7 +81,7 @@ public class TestSidecarCachingFileSystem {
   SidecarCachingFileSystem fs;
     
   static boolean skipTests = false;
-  
+    
   @BeforeClass
   public static void setupClass() throws IOException {
     if (Utils.getJavaVersion() < 11) {
@@ -442,5 +443,4 @@ public class TestSidecarCachingFileSystem {
     
     return cachingFileSystem;
   }
-  
 }
