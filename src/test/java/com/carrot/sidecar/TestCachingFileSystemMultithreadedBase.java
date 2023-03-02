@@ -25,6 +25,7 @@ import static org.junit.Assert.fail;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Random;
 
 import org.apache.commons.math3.distribution.ZipfDistribution;
@@ -35,7 +36,6 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -53,16 +53,10 @@ import com.carrot.sidecar.fs.file.SidecarLocalFileSystem;
  */
 public abstract class TestCachingFileSystemMultithreadedBase {
   
-  private static final Logger LOG = LoggerFactory.getLogger(TestCachingFileSystemMultithreadedBase.class);
-
+  protected static final Logger LOG = LoggerFactory.getLogger(TestCachingFileSystemMultithreadedBase.class);
   protected FileSystem fs;
-  
-  protected static URI extDirectory;
-  
   protected URI cacheDirectory;
-  
-  protected URI writeCacheDirectory;  
-  
+  protected URI writeCacheDirectory;    
   protected SidecarDataCacheType cacheType = SidecarDataCacheType.OFFHEAP;
   
   /**
@@ -70,51 +64,32 @@ public abstract class TestCachingFileSystemMultithreadedBase {
    */
    
   protected long fileCacheSize = 5L * 1024 * 1024 * 1024;
-  
   protected int fileCacheSegmentSize = 64 * 1024 * 1024;
-  
   protected long offheapCacheSize = 1L * 1024 * 1024 * 1024;
-  
   protected int offheapCacheSegmentSize = 4 * 1024 * 1024;
-  
   protected long metaCacheSize = 1L << 30;
-  
-  protected int metaCacheSementSize = 4 * (1 << 20);
-  
+  protected int metaCacheSegmentSize = 4 * (1 << 20);
   protected double zipfAlpha = 0.9;
-  
   protected long writeCacheMaxSize = 5L * (1 << 30);
-  
   protected long externalDataSize = 10L << 30; // 10 GB
-    
   protected int pageSize = 1 << 16; // 64KB (For HBase)
   // If access is random buffer size must be small
   // reads must be aligned to a page size
   protected int ioBufferSize = 2 * pageSize;//2 << 20; // 2MB
-      
   protected int scavThreads = 1;
-      
   protected boolean aqEnabledFile = false;
-  
   protected boolean aqEnabledOffheap = false;
-  
   protected double aqStartRatio = 0.5;
   
   // Hybrid cache
   protected boolean hybridCacheInverseMode = true;
-  
   protected boolean victim_promoteOnHit = true;
-  
   protected double victim_promoteThreshold = 0.99;
-  
-  protected transient int numExtFiles;
-  
+
+  protected transient int numExtFiles;  
   protected transient long extDataSize;
-  
   protected transient long counter;
-  
   protected long fileSize = 100 * 1 << 20; // 100MB
-  
   protected int numThreads = 4;
   
   protected long testDuration = 600000; // 10 min
@@ -124,20 +99,11 @@ public abstract class TestCachingFileSystemMultithreadedBase {
     if (Utils.getJavaVersion() < 11) {
       LOG.warn("Java 11+ is required to run test");
       System.exit(-1);
-    }
-    extDirectory = createTempDirectory("ext").toUri();
-    
-  }
-  
-  @AfterClass
-  public static void tearDown() throws IOException {
-    TestUtils.deletePathRecursively(extDirectory.getPath());
-    LOG.info("Deleted {}", extDirectory.getPath());
+    }    
   }
   
   @Before
   public void setUp() throws IOException {
-
     this.cacheDirectory = createTempDirectory("carrot_cache").toUri();
     this.writeCacheDirectory = createTempDirectory("write_cache").toUri();
     try {
@@ -150,14 +116,21 @@ public abstract class TestCachingFileSystemMultithreadedBase {
   
   @After 
   public void close() throws IOException {
-    SidecarCachingFileSystem.dispose();
     TestUtils.deletePathRecursively(cacheDirectory.getPath());
     LOG.info("Deleted {}", cacheDirectory);
     TestUtils.deletePathRecursively(writeCacheDirectory.getPath());
     LOG.info("Deleted {}", writeCacheDirectory);
+    Path workingDirectory = fs.getWorkingDirectory();
+    boolean result = fs.delete(workingDirectory, true);
+    if (result) {
+      LOG.info("Deleted {}", workingDirectory);
+    } else {
+      LOG.info("Failed to delete {}", workingDirectory);
+    }
+    SidecarCachingFileSystem.dispose();
   }
   
-  protected FileSystem cachingFileSystem() throws IOException {
+  protected FileSystem cachingFileSystem() throws IOException, URISyntaxException {
     Configuration conf = getConfiguration();
     conf.set("fs.file.impl", SidecarLocalFileSystem.class.getName());
     conf.set("fs.file.impl.disable.cache", Boolean.TRUE.toString());
@@ -174,9 +147,9 @@ public abstract class TestCachingFileSystemMultithreadedBase {
     CarrotConfig carrotCacheConfig = CarrotConfig.getInstance();
     // Set meta cache 
     carrotCacheConfig.setCacheMaximumSize(SidecarConfig.META_CACHE_NAME, metaCacheSize);
-    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSementSize);
+    carrotCacheConfig.setCacheSegmentSize(SidecarConfig.META_CACHE_NAME, metaCacheSegmentSize);
     
-    FileSystem fs = FileSystem.get(extDirectory, conf);
+    FileSystem fs = FileSystem.get(new URI ("file:///"), conf);
     // Set meta caching enabled
     SidecarCachingFileSystem cfs = ((SidecarLocalFileSystem) fs).getCachingFileSystem();
     cfs.setMetaCacheEnabled(true);
@@ -189,21 +162,21 @@ public abstract class TestCachingFileSystemMultithreadedBase {
   @Test
   public void testStress() throws IOException {
     LOG.info("Continuously creates new files, delete old ones and read data");
-
+    final  Path workingDir = fs.getWorkingDirectory();
     Runnable writer = () -> {
 
       long start = System.currentTimeMillis();
       while (System.currentTimeMillis() - start < testDuration) {
         try {
-          Path p = new Path(new Path(extDirectory.toString()), "testfile" + counter);
-          FSDataOutputStream os = fs.create(p);
+          Path p = new Path(workingDir, "testfile" + counter);
+          FSDataOutputStream os = fs.create(p, true);
           writeFileData(os, fileSize);
           extDataSize += fileSize;
           numExtFiles++;
           if (extDataSize > externalDataSize) {
             long startIndex = counter - numExtFiles;
             while (true) {
-              Path pp = new Path(new Path(extDirectory.toString()), "testfile" + startIndex);
+              Path pp = new Path(workingDir, "testfile" + startIndex);
               if (!fs.exists(pp)) {
                 startIndex++;
                 continue;
@@ -241,7 +214,7 @@ public abstract class TestCachingFileSystemMultithreadedBase {
         if (counter - n < 0) {
           n = (int) ((double) counter * fileSize / externalDataSize * n);
         }
-        Path p = new Path(new Path(extDirectory.toString()), "testfile" + (counter - n));
+        Path p = new Path(workingDir, "testfile" + (counter - n));
         try {
           if (!fs.exists(p)) {
             Thread.sleep(100);

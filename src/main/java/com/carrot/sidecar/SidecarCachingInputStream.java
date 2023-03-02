@@ -662,10 +662,8 @@ public class SidecarCachingInputStream extends InputStream
     return cache.exists(key);
   }
 
-  private boolean dataPagePut(byte[] key, int keyOffset, int keySize, 
-      byte[] value, int valueOffset, int valueSize, long fileOffset /* to detect scan*/)
-    throws IOException
-  {
+  private boolean dataPagePut(byte[] key, int keyOffset, int keySize, byte[] value, int valueOffset,
+      int valueSize, long fileOffset /* to detect scan */) throws IOException {
     if (!cacheOnRead || cache == null) {
       return false;
     }
@@ -674,31 +672,31 @@ public class SidecarCachingInputStream extends InputStream
       if (curOffset != fileOffset) {
         boolean scanDetected = sd.record(fileOffset);
         if (scanDetected) {
-          // Disabling this until SD issue gets its resolution: https://github.com/VladRodionov/sidecar/issues/89
+          // Disabling this until SD issue gets its resolution:
+          // https://github.com/VladRodionov/sidecar/issues/89
           this.cacheOnRead = false;
           this.stats.addTotalScansDetected(1);
           return false;
         }
       }
     }
-    synchronized (cache) {
-      // TODO: use future putIfAbsent API
-      if (cache.exists(key, keyOffset, keySize)) {
-        // data pages in the cache are unique because of the key naming scheme:
-        // MD5(file-path + modification time + file offset)
-        // so if we have the same key we have the same data page
-        // no need to insert it
-        // This can happen when multiple clients access the same data file
-        // Exists API is cheap. Its less than 1 microsecond on average
-        return false;
-      }
-      // Put call is cheap as well - it stores data in in-memory buffer
-      // when memory buffer becomes full it is submitted asynchronously 
-      // for file save operation
-      return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
+    // TODO: use future putIfAbsent API
+    if (cache.exists(key, keyOffset, keySize)) {
+      // data pages in the cache are unique because of the key naming scheme:
+      // MD5(file-path + modification time + file offset)
+      // so if we have the same key we have the same data page
+      // no need to insert it
+      // This can happen when multiple clients access the same data file
+      // Exists API is cheap. Its less than 1 microsecond on average
+      return false;
     }
+    // Put call is cheap as well - it stores data in in-memory buffer
+    // when memory buffer becomes full it is submitted asynchronously
+    // for file save operation
+    return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
+
   }
-  
+
   /*****************************/
   
   private int readFromPrefetchBuffer(byte[] bytesBuffer, int offset, int length,
