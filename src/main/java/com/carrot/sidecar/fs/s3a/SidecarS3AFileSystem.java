@@ -20,6 +20,7 @@ package com.carrot.sidecar.fs.s3a;
 import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -61,7 +62,6 @@ public class SidecarS3AFileSystem extends S3AFileSystem
   public FileStatus getFileStatus(Path p) throws IOException {
     return sidecar.getFileStatus(p);
   }
-  
   @Override
   public void initialize(URI name, Configuration originalConf) throws IOException {
     super.initialize(name, originalConf);

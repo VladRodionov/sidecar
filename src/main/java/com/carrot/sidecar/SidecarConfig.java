@@ -30,7 +30,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.carrot.sidecar.hints.ScanDetectorHint;
+import com.carrot.sidecar.hints.CachingHintDetector;
 
 public class SidecarConfig extends Properties {
   private static final long serialVersionUID = 1L;
@@ -63,7 +63,7 @@ public class SidecarConfig extends Properties {
   
   public final static String SIDECAR_PERSISTENT_CACHE_KEY = "sidecar.cache.persistent";
   
-  public final static String SIDECAR_SCAN_DETECTOR_HINT_IMPL_KEY = "sidecar.scan.detector.hint.impl";
+  public final static String SIDECAR_CACHING_HINT_DETECTOR_IMPL_KEY = "sidecar.cache.read.detector.hint.impl";
   
   /**
    * This thread pool is used to sync write cache and remote FS as well as 
@@ -73,7 +73,8 @@ public class SidecarConfig extends Properties {
   
   /**
    * Comma-separated list of regular expressions of directory names in
-   * remote file system, which must be excluded from caching 
+   * remote file system, which must be excluded from caching on read. By default, SidecarFS caches ALL reads
+   * (except when cache read detector if provided forbids caching)
    */
   public final static String SIDECAR_EXCLUDE_PATH_LIST_KEY = "sidecar.exclude.path.list";
   
@@ -119,7 +120,7 @@ public class SidecarConfig extends Properties {
    */
   public final static String SIDECAR_SCAN_DETECTOR_THRESHOLD_PAGES_KEY = "sidecar.scan.detector.threshold.pages";
   
-  public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.ASYNC_CLOSE;
+  public final static WriteCacheMode DEFAULT_SIDECAR_WRITE_CACHE_MODE = WriteCacheMode.SYNC;
   
   public final static DataCacheMode DEFAULT_SIDECAR_DATA_CACHE_MODE = DataCacheMode.ALL;
   
@@ -127,13 +128,13 @@ public class SidecarConfig extends Properties {
   
   public final static long DEFAULT_SIDECAR_DATA_PAGE_SIZE = 1024 * 1024; // 1MB
   
-  public final static long DEFAULT_SIDECAR_IO_BUFFER_SIZE = 1024 * 1024; // 1MB
+  public final static long DEFAULT_SIDECAR_IO_BUFFER_SIZE = 4 * DEFAULT_SIDECAR_DATA_PAGE_SIZE; //4MB
   
   public final static int DEFAULT_SIDECAR_IO_POOL_SIZE = 32; // 1MB
   
   public final static boolean DEFAULT_SIDECAR_JMX_METRICS_ENABLED = true;
   
-  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "Sidecar";
+  public final static String DEFAULT_SIDECAR_JMX_METRICS_DOMAIN_NAME = "SidecarFS";
   
   public final static boolean DEFAULT_SIDECAR_TEST_MODE = false;
   
@@ -668,21 +669,21 @@ public class SidecarConfig extends Properties {
    * @param className class name
    * @return self
    */
-  public SidecarConfig setScanDetectorHintImpl(String className) {
-    setProperty(SIDECAR_SCAN_DETECTOR_HINT_IMPL_KEY, className);
+  public SidecarConfig setCachingHintDetector(String className) {
+    setProperty(SIDECAR_CACHING_HINT_DETECTOR_IMPL_KEY, className);
     return this;
   }
   
   /**
-   * Get cache on read hint
+   * Get caching hint detector
    * @return hint object
    */
-  public ScanDetectorHint getScanDetectorHint() {
-    String className = getProperty(SIDECAR_SCAN_DETECTOR_HINT_IMPL_KEY);
+  public CachingHintDetector getCachingHintDetector() {
+    String className = getProperty(SIDECAR_CACHING_HINT_DETECTOR_IMPL_KEY);
     if (className != null) {
       try {
         Class<?> clz = Class.forName(className);
-        return (ScanDetectorHint) clz.getDeclaredConstructor().newInstance();
+        return (CachingHintDetector) clz.getDeclaredConstructor().newInstance();
       } catch(Exception e) {
         LOG.error("Failed to initialize", e);
       }

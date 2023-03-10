@@ -33,15 +33,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Least Recently Created (or Inserted) cache  
+ * Least Recently Created (or Inserted) Queue  
  *
  * @param <K> key class
  * @param <V> value class
  */
-public class LRCCache<K, V> {
-  private static final Logger LOG = LoggerFactory.getLogger(LRCCache.class);
+public class LRCQueue<K, V> {
+  private static final Logger LOG = LoggerFactory.getLogger(LRCQueue.class);
 
-  public static String NAME = "lru-cache";
+  public static String NAME = "lrc-queue";
   public static String FILE_NAME = "write-cache-file-list.cache";
   private static final int INIT_CAPACITY = 2000;
   private static final float INIT_LOAD_FACTOR = 0.75f;
@@ -51,7 +51,7 @@ public class LRCCache<K, V> {
       Collections.synchronizedMap(new LinkedHashMap<>(INIT_CAPACITY,
           INIT_LOAD_FACTOR, ACCESS_ORDERED));
   
-  public LRCCache() {}
+  public LRCQueue() {}
   
   /**
    * Put key value

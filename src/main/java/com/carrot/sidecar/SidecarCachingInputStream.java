@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
 
 import com.carrot.cache.Cache;
 import com.carrot.cache.io.ObjectPool;
-import com.carrot.sidecar.hints.ScanDetectorHint;
+import com.carrot.sidecar.hints.CachingHintDetector;
 import com.carrot.sidecar.util.ScanDetector;
 import com.carrot.sidecar.util.Statistics;
 
@@ -151,7 +151,7 @@ public class SidecarCachingInputStream extends InputStream
   private ScanDetector sd;
   
   /** Cache on read hint class */
-  private ScanDetectorHint hint;
+  private CachingHintDetector hint;
   
   private boolean scanDetected = false;
 
@@ -210,12 +210,12 @@ public class SidecarCachingInputStream extends InputStream
     this.stats = stats;
     this.cacheOnRead = cacheOnRead;
     this.sd = sd;
-    this.hint = ScanDetectorHint.fromConfig(SidecarConfig.getInstance());
+    this.hint = CachingHintDetector.fromConfig(SidecarConfig.getInstance());
   }
     
   private boolean scanDetected() {
     if (this.hint != null) {
-      boolean result = hint.scanDetected();
+      boolean result = hint.doNotCache(true);
       scanDetected = result;
       return result;
     }
@@ -680,21 +680,22 @@ public class SidecarCachingInputStream extends InputStream
         }
       }
     }
-    // TODO: use future putIfAbsent API
-    if (cache.exists(key, keyOffset, keySize)) {
-      // data pages in the cache are unique because of the key naming scheme:
-      // MD5(file-path + modification time + file offset)
-      // so if we have the same key we have the same data page
-      // no need to insert it
-      // This can happen when multiple clients access the same data file
-      // Exists API is cheap. Its less than 1 microsecond on average
-      return false;
+    synchronized (this.getClass()) {
+      // TODO: use future putIfAbsent API
+      if (cache.exists(key, keyOffset, keySize)) {
+        // data pages in the cache are unique because of the key naming scheme:
+        // MD5(file-path + modification time + file offset)
+        // so if we have the same key we have the same data page
+        // no need to insert it
+        // This can happen when multiple clients access the same data file
+        // Exists API is cheap. Its less than 1 microsecond on average
+        return false;
+      }
+      // Put call is cheap as well - it stores data in in-memory buffer
+      // when memory buffer becomes full it is submitted asynchronously
+      // for file save operation
+      return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
     }
-    // Put call is cheap as well - it stores data in in-memory buffer
-    // when memory buffer becomes full it is submitted asynchronously
-    // for file save operation
-    return cache.put(key, keyOffset, keySize, value, valueOffset, valueSize, 0L);
-
   }
 
   /*****************************/

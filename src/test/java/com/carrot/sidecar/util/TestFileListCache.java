@@ -25,11 +25,11 @@ import org.junit.Test;
 
 public class TestFileListCache {
   int num = 10;
-  LRCCache<String, Long> cache;
+  LRCQueue<String, Long> cache;
   
   @Before
   public void setUp() {
-    cache = new LRCCache<>();
+    cache = new LRCQueue<>();
     for (int i = 0; i < num; i++) {
       cache.put("key" + i, (long) i);
     }
@@ -55,7 +55,7 @@ public class TestFileListCache {
     cache.save(baos);
     byte[] buf = baos.toByteArray();
     ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-    cache = new LRCCache<>();
+    cache = new LRCQueue<>();
     cache.load(bais);
     verify();
   }

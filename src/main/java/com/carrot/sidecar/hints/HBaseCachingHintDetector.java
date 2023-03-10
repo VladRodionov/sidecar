@@ -21,13 +21,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class HBaseScanDetectorHint implements ScanDetectorHint {
+public class HBaseCachingHintDetector implements CachingHintDetector {
   
-  private static final Logger LOG = LoggerFactory.getLogger(HBaseScanDetectorHint.class);  
-
   
   private static Map<Thread, Boolean> nonCacheableThreads = 
       new ConcurrentHashMap<Thread, Boolean>();
@@ -35,11 +30,12 @@ public class HBaseScanDetectorHint implements ScanDetectorHint {
   /** Stream access counter */
   private AtomicLong streamAccessCounter = new AtomicLong(0);
   
-  public HBaseScanDetectorHint() {
+  public HBaseCachingHintDetector() {
   }
   
   @Override
-  public boolean scanDetected() {
+  public boolean doNotCache(boolean read) {
+    // Default implementation check presence of compaction in both: read and write path
     Thread currentThread = Thread.currentThread();
     if (nonCacheableThreads.containsKey(currentThread)) {
       return true;
