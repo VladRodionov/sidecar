@@ -40,21 +40,27 @@ public class HBaseCachingHintDetector implements CachingHintDetector {
     if (nonCacheableThreads.containsKey(currentThread)) {
       return true;
     }
-    long count = streamAccessCounter.incrementAndGet();
+    long count = streamAccessCounter.getAndIncrement();
     if (count % 10 == 0) {
       // This call is expensive: on my MBP Pro 2019 it takes 20 microseconds
       // So it is expensive to call it every time we read data from the stream
       // Therefore, we call it every 10th time
       StackTraceElement[] traces = currentThread.getStackTrace();
       String compactor = "org.apache.hadoop.hbase.regionserver.compactions.Compactor";
+      String flusher = "org.apache.hadoop.hbase.regionserver.StoreFlusher";
+      String lookUp = read? compactor: flusher;
       for (int i = traces.length - 1; i >= 0; i--) {
         StackTraceElement e = traces[i];
-        if (e.getClassName().equals(compactor)) {
-          nonCacheableThreads.put(currentThread, Boolean.TRUE);
-          return true;
+        if (e.getClassName().equals(lookUp)) {
+          if (read) {
+            nonCacheableThreads.put(currentThread, Boolean.TRUE);
+            return true;
+          } else {
+            return false;
+          }
         }
       }
     }
-    return false;
+    return read? false: true;
   }
 }

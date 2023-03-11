@@ -272,8 +272,8 @@ public class TestSidecarCachingFileSystem {
     Path p = new Path(workDir, "test-file");
     Cache cache = SidecarCachingFileSystem.getDataCache();
     Cache metaCache = SidecarCachingFileSystem.getMetaCache();
-    //LRCQueue<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
-    SizeBasedPriorityQueue fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
+    LRCQueue<String, Long> fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
+    //SizeBasedPriorityQueue fifoCache = SidecarCachingFileSystem.getWriteCacheFileListCache();
     LOG.info("meta size = {} cache size={}", metaCache.size(), cache.size());
 
     FSDataOutputStream os = fs.create(p, null, true, 4096, (short)1, dataCacheSegmentSize, null);

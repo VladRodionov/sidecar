@@ -63,7 +63,7 @@ public class SidecarConfig extends Properties {
   
   public final static String SIDECAR_PERSISTENT_CACHE_KEY = "sidecar.cache.persistent";
   
-  public final static String SIDECAR_CACHING_HINT_DETECTOR_IMPL_KEY = "sidecar.cache.read.detector.hint.impl";
+  public final static String SIDECAR_CACHING_HINT_DETECTOR_IMPL_KEY = "sidecar.caching.hint.detector.impl";
   
   /**
    * This thread pool is used to sync write cache and remote FS as well as 
@@ -74,17 +74,15 @@ public class SidecarConfig extends Properties {
   /**
    * Comma-separated list of regular expressions of directory names in
    * remote file system, which must be excluded from caching on read. By default, SidecarFS caches ALL reads
-   * (except when cache read detector if provided forbids caching)
+   * (except when caching hint detector if provided forbids caching)
    */
-  public final static String SIDECAR_EXCLUDE_PATH_LIST_KEY = "sidecar.exclude.path.list";
+  public final static String SIDECAR_READ_EXCLUDE_PATH_LIST_KEY = "sidecar.read.exclude.path.list";
   
   /**
    * Comma-separated list of regular expressions of directory names in
-   * remote file system, which must be included into caching. All other paths will 
-   * be ignored, as well as those defined in in the exclude list
-   * One should specify either exclude list or include list, not both
+   * remote file system, which must be included into caching in a write path.
    */
-  public final static String SIDECAR_INCLUDE_PATH_LIST_KEY = "sidecar.include.path.list";
+  public final static String SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY = "sidecar.write.include.path.list";
   
   public final static String SIDECAR_WRITE_CACHE_MODE_KEY = "sidecar.write.cache.mode";
   
@@ -104,7 +102,7 @@ public class SidecarConfig extends Properties {
   /**
    * If cache data mode == SIZE_OVER - this is the threshold
    */
-  public final static String SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY = "sidecar.cache.size.over.threshold";
+  public final static String SIDECAR_MIN_SIZE_OVER_THRESHOLD_KEY = "sidecar.cache.minsize.threshold";
   
   /**
    * Sidecar scan detector. Detects long scan operations to avoid caching data for long scans
@@ -371,7 +369,7 @@ public class SidecarConfig extends Properties {
    * @return list of include paths or null
    */
   public String[] getIncludePathList(String cacheName) {
-    String value = getProperty(SIDECAR_INCLUDE_PATH_LIST_KEY);
+    String value = getProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY);
     if (value != null) {
       String[] paths = value.split(",");
       // clean up
@@ -388,7 +386,7 @@ public class SidecarConfig extends Properties {
    * @return self
    */
   public SidecarConfig setIncludePathList(String cacheName, String list) {
-    setProperty(SIDECAR_INCLUDE_PATH_LIST_KEY, list);
+    setProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY, list);
     return this;
   }
   
@@ -398,7 +396,7 @@ public class SidecarConfig extends Properties {
    * @return list of include paths or null
    */
   public String[] getExcludePathList(String cacheName) {
-    String value = getProperty(SIDECAR_INCLUDE_PATH_LIST_KEY);
+    String value = getProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY);
     if (value != null) {
       String[] paths = value.split(",");
       // clean up
@@ -415,7 +413,7 @@ public class SidecarConfig extends Properties {
    * @return self
    */
   public SidecarConfig setExcludePathList(String cacheName, String list) {
-    setProperty(SIDECAR_INCLUDE_PATH_LIST_KEY, list);
+    setProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY, list);
     return this;
   }
   
@@ -583,7 +581,7 @@ public class SidecarConfig extends Properties {
    * @return minimum file size to cache
    */
   public long getCacheableFileSizeThreshold () {
-    String value = getProperty(SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY);
+    String value = getProperty(SIDECAR_MIN_SIZE_OVER_THRESHOLD_KEY);
     if (value != null) {
       return Long.parseLong(value);
     }
@@ -596,7 +594,7 @@ public class SidecarConfig extends Properties {
    * @return self
    */
   public SidecarConfig setCacheableFileSizeThreshold(long size) {
-    setProperty(SIDECAR_CACHE_SIZE_OVER_THRESHOLD_KEY, Long.toString(size));
+    setProperty(SIDECAR_MIN_SIZE_OVER_THRESHOLD_KEY, Long.toString(size));
     return this;
   }
   
@@ -690,4 +688,54 @@ public class SidecarConfig extends Properties {
     }
     return null;
   }
+  
+  /**
+   * Get include path pattern list on write (data page cache) 
+   * @return list
+   */
+  public String[] getIncludeListOnWrite() {
+    String v = getProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY);
+    if (v != null) {
+      String[] parts = v.split(",");
+      Arrays.stream(parts).forEach(x -> x.trim());
+      return parts;
+    }
+    return null;
+  }
+  
+  /**
+   * Set include list on write
+   * @param list include list
+   * @return self
+   */
+  public SidecarConfig setIncludeListOnWrite(String list) {
+    setProperty(SIDECAR_WRITE_INCLUDE_PATH_LIST_KEY, list);
+    return this;
+  }
+  
+  
+  /**
+   * Get exclude path pattern list on read (data page cache) 
+   * @return list
+   */
+  public String[] getExcludeListOnRead() {
+    String v = getProperty(SIDECAR_READ_EXCLUDE_PATH_LIST_KEY);
+    if (v != null) {
+      String[] parts = v.split(",");
+      Arrays.stream(parts).forEach(x -> x.trim());
+      return parts;
+    }
+    return null;
+  }
+  
+  /**
+   * Set write cache exclude list
+   * @param list exclude list
+   * @return self
+   */
+  public SidecarConfig setExcludeListOnRead(String list) {
+    setProperty(SIDECAR_READ_EXCLUDE_PATH_LIST_KEY, list);
+    return this;
+  }
+
 }
