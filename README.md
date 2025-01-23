@@ -1,5 +1,5 @@
 # Sidecar
-Sidecar is the Hadoop - compatible file system with caching data on read and write. It was specifically designed to support faster read/write access to a remote cloud storage systems. 
+Sidecar is the Hadoop - compatible **caching (read/write)** file system. It was specifically designed to support faster read/write access to remote cloud storage systems. 
 
 ## Supported file systems
 
