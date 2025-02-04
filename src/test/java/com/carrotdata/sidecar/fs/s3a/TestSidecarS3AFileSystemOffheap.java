@@ -36,7 +36,7 @@ public class TestSidecarS3AFileSystemOffheap  extends TestSidecarS3AFileSystemBa
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarDataCacheType.OFFHEAP)
+      .setDataCacheType(SidecarDataCacheType.MEMORY)
       .setJMXMetricsEnabled(false)
       .setWriteCacheMode(useWriteCache? WriteCacheMode.SYNC: WriteCacheMode.DISABLED)
       .setTestMode(true); // do not install shutdown hooks

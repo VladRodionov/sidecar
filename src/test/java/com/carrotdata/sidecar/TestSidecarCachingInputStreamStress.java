@@ -14,18 +14,14 @@
 package com.carrotdata.sidecar;
 
 import static java.nio.file.Files.createTempDirectory;
-import static org.junit.Assert.fail;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.util.Random;
 import java.util.concurrent.Callable;
-
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
 
 import org.apache.commons.math3.distribution.ZipfDistribution;
 import org.apache.hadoop.conf.Configuration;
@@ -36,6 +32,8 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.carrotdata.cache.Cache;
 import com.carrotdata.cache.controllers.AQBasedAdmissionController;
@@ -44,20 +42,15 @@ import com.carrotdata.cache.eviction.SLRUEvictionPolicy;
 import com.carrotdata.cache.util.CacheConfig;
 import com.carrotdata.cache.util.Epoch;
 import com.carrotdata.cache.util.Utils;
-import com.carrotdata.sidecar.SidecarCachingInputStream;
-import com.carrotdata.sidecar.SidecarConfig;
 import com.carrotdata.sidecar.util.Statistics;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class TestSidecarCachingInputStreamStress {
+public abstract class TestSidecarCachingInputStreamStress {
     
   private static final Logger LOG = LoggerFactory.getLogger(TestSidecarCachingInputStreamBase.class);
 
   private URI cacheDirectory;
   
-  private File sourceFile;
+  private static File sourceFile;
   
   private long cacheSize = 500L * (1 << 30);
   
@@ -69,19 +62,19 @@ public class TestSidecarCachingInputStreamStress {
   
   private Cache cache;
   
-  int pageSize;
+  int pageSize = 1 << 20;
   
-  int ioBufferSize;
+  int ioBufferSize = 1 << 20;
   
   String domainName;
     
   @BeforeClass
-  public void setupClass() throws IOException {
-    this.sourceFile = TestUtils.createTempFile();
+  public static void setupClass() throws IOException {
+    sourceFile = TestUtils.createTempFile();
   }
   
   @AfterClass
-  public void tearDown() {
+  public static void tearDown() {
 
       sourceFile.delete();
       LOG.info("Deleted {}", sourceFile.getAbsolutePath());
@@ -136,18 +129,7 @@ public class TestSidecarCachingInputStreamStress {
     if (domainName == null) {
       return;
     }
-    MBeanServer mbs = ManagementFactory.getPlatformMBeanServer(); 
-    ObjectName name;
-    try {
-      name = new ObjectName(String.format("%s:type=cache,name=%s",domainName, cache.getName()));
-      mbs.unregisterMBean(name); 
-    } catch (Exception e) {
-      LOG.error("unregisterJMX", e);
-    }
-    Cache victimCache = cache.getVictimCache();
-    if (victimCache != null) {
-      unregisterJMXMetricsSink(victimCache);
-    }
+    cache.unregisterJMXMetricsSink(domainName);
   }
 
   @Test

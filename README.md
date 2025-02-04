@@ -20,73 +20,73 @@ You will need to modify Hadoop configuration file to use a caching version of a 
 ### Local File System
 
 ```bash
-fs.file.impl=com.carrot.sidecar.fs.file.FileSidecarCachingFileSystem
+fs.file.impl=com.carrotdata.sidecar.fs.file.FileSidecarCachingFileSystem
 ```
 
 ### Hadoop Distributed File System
 
 ```bash
-fs.hdfs.impl=com.carrot.sidecar.hdfs.SidecarDistributedFileSystem
+fs.hdfs.impl=com.carrotdata.sidecar.hdfs.SidecarDistributedFileSystem
 ```
 
 ### AWS S3
 
 ```bash
-fs.s3a.impl=com.carrot.sidecar.s3a.SidecarS3AFileSystem
+fs.s3a.impl=com.carrotdata.sidecar.s3a.SidecarS3AFileSystem
 ```
 
 ### Azure Data Lake File System Gen 1
 
 ```bash
-fs.adl.impl=com.carrot.sidecar.adl.SidecarAdlFileSystem
+fs.adl.impl=com.carrotdata.sidecar.adl.SidecarAdlFileSystem
 ```
 
 ### Azure Data Lake File System Gen 2
 
 ```bash
-fs.abfs.impl=com.carrot.sidecar.abfs.SidecarAzureBlobFileSystem
+fs.abfs.impl=com.carrotdata.sidecar.abfs.SidecarAzureBlobFileSystem
 ```
 
 ### Azure Data Lake File System Gen 2 (Secure)
 
 ```bash
-fs.abfss.impl=com.carrot.sidecar.abfs.SecureSidecarAzureBlobFileSystem
+fs.abfss.impl=com.carrotdata.sidecar.abfs.SecureSidecarAzureBlobFileSystem
 ```
 
 ### WASB native Azure File System
 
 ```bash
-fs.wasb.impl=com.carrot.sidecar.wasb.SidecarNativeAzureBlobFileSystem
+fs.wasb.impl=com.carrotdata.sidecar.wasb.SidecarNativeAzureBlobFileSystem
 ```
 
 ### WASB native Azure File System (Secure)
 
 ```bash
-fs.wasbs.impl=com.carrot.sidecar.wasb.SecureSidecarNativeAzureBlobFileSystem
+fs.wasbs.impl=com.carrotdata.sidecar.wasb.SecureSidecarNativeAzureBlobFileSystem
 ```
 
 ### Google Cloud Storage
 
 ```bash
-fs.gs.impl=com.carrot.sidecar.gcs.SidecarGoogleHadoopFileSystem
+fs.gs.impl=com.carrotdata.sidecar.gcs.SidecarGoogleHadoopFileSystem
 ```
 
 ### Chineese Aliyun OSS (Alibaba Cloud)
 
 ```bash
-fs.oss.impl=com.carrot.sidecar.oss.SidecarAliyunOSSFileSystem
+fs.oss.impl=com.carrotdata.sidecar.oss.SidecarAliyunOSSFileSystem
 ```
 
 ### Chineese Aliyun OSS (Alibaba Cloud)
 
 ```bash
-fs.oss.impl=com.carrot.sidecar.oss.SidecarAliyunOSSFileSystem
+fs.oss.impl=com.carrotdata.sidecar.oss.SidecarAliyunOSSFileSystem
 ```
 
 ### OpenStack Swift Object Store
 
 ```bash
-fs.swift.impl=com.carrot.sidecar.swift.SidecarSwiftNativeFileSystem
+fs.swift.impl=com.carrotdata.sidecar.swift.SidecarSwiftNativeFileSystem
 ```
 
 

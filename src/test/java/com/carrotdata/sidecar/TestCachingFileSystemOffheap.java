@@ -29,7 +29,7 @@ import com.carrotdata.sidecar.SidecarDataCacheType;
 public class TestCachingFileSystemOffheap  extends TestCachingFileSystemBase{
 
   
-  protected SidecarDataCacheType cacheType = SidecarDataCacheType.OFFHEAP;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.MEMORY;
 
   @Override
   protected Configuration getConfiguration() {
@@ -37,7 +37,7 @@ public class TestCachingFileSystemOffheap  extends TestCachingFileSystemBase{
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarDataCacheType.OFFHEAP)
+      .setDataCacheType(SidecarDataCacheType.MEMORY)
       .setJMXMetricsEnabled(true);
     
     CacheConfig carrotCacheConfig = CacheConfig.getInstance();

@@ -20,7 +20,7 @@ package com.carrotdata.sidecar;
 public enum SidecarDataCacheType {
   
   DISABLED("disabled"),
-  OFFHEAP("memory"),
+  MEMORY("memory"),
   FILE("file"),
   HYBRID("hybrid");
   
@@ -36,7 +36,7 @@ public enum SidecarDataCacheType {
   
   public String getCacheName() {
     switch(this) {
-      case OFFHEAP: return SidecarConfig.DATA_CACHE_OFFHEAP_NAME;
+      case MEMORY: return SidecarConfig.DATA_CACHE_OFFHEAP_NAME;
       case FILE: return SidecarConfig.DATA_CACHE_FILE_NAME;
       default: return null;
     }

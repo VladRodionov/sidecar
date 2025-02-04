@@ -360,7 +360,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
 
   private void setDataCacheType(CacheConfig config, SidecarDataCacheType type) {
     if (type == SidecarDataCacheType.HYBRID) {
-      addCacheType(config, SidecarDataCacheType.OFFHEAP.getCacheName(), SidecarDataCacheType.OFFHEAP.getType());
+      addCacheType(config, SidecarDataCacheType.MEMORY.getCacheName(), SidecarDataCacheType.MEMORY.getType());
       addCacheType(config, SidecarDataCacheType.FILE.getCacheName(), SidecarDataCacheType.FILE.getType());
     } else if (type != SidecarDataCacheType.DISABLED){
       addCacheType(config, type.getCacheName(), type.getType());
@@ -921,7 +921,7 @@ public class SidecarCachingFileSystem implements SidecarCachingOutputStream.List
       dataCache = loadDataCache(dataCacheType);
       return dataCache;
     } else {
-      dataCache = loadDataCache(SidecarDataCacheType.OFFHEAP);
+      dataCache = loadDataCache(SidecarDataCacheType.MEMORY);
       Cache victimCache = loadDataCache(SidecarDataCacheType.FILE);
       dataCache.setVictimCache(victimCache);
       return dataCache;

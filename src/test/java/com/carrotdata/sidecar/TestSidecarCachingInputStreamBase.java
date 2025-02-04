@@ -96,7 +96,7 @@ public class TestSidecarCachingInputStreamBase {
       
   protected int scavThreads = 1;
   
-  protected SidecarDataCacheType cacheType = SidecarDataCacheType.OFFHEAP;
+  protected SidecarDataCacheType cacheType = SidecarDataCacheType.MEMORY;
     
   protected boolean aqEnabledFile = true;
   
@@ -161,7 +161,7 @@ public class TestSidecarCachingInputStreamBase {
   
   private Cache createCache() throws IOException {
     switch(cacheType) {
-      case OFFHEAP: return createOffheapCache();
+      case MEMORY: return createOffheapCache();
       case FILE: return createFileCache();
       case HYBRID: return createHybridCache();
       default: return null;
@@ -212,7 +212,7 @@ public class TestSidecarCachingInputStreamBase {
     cacheConfig
       .setDataPageSize(pageSize)
       .setIOBufferSize(ioBufferSize)
-      .setDataCacheType(SidecarDataCacheType.OFFHEAP)
+      .setDataCacheType(SidecarDataCacheType.MEMORY)
       .setJMXMetricsEnabled(true);
     
     CacheConfig carrotCacheConfig = CacheConfig.getInstance();
@@ -254,18 +254,10 @@ public class TestSidecarCachingInputStreamBase {
     if (domainName == null) {
       return;
     }
-    MBeanServer mbs = ManagementFactory.getPlatformMBeanServer(); 
-    ObjectName name;
-    try {
-      name = new ObjectName(String.format("%s:type=cache,name=%s",domainName, cache.getName()));
-      mbs.unregisterMBean(name); 
-    } catch (Exception e) {
-      e.printStackTrace();
-      LOG.error("unregisterMBean",e);
-    }
+    cache.unregisterJMXMetricsSink(domainName);
     Cache victimCache = cache.getVictimCache();
     if (victimCache != null) {
-      unregisterJMXMetricsSink(victimCache);
+      victimCache.unregisterJMXMetricsSink(domainName);
     }
   }
   

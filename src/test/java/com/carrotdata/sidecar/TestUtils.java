@@ -150,10 +150,10 @@ public class TestUtils {
   private static Cache createCache(CacheConfig config, SidecarDataCacheType cacheType) throws IOException {
     switch (cacheType) {
       case FILE: 
-      case OFFHEAP:
+      case MEMORY:
         return new Cache(cacheType.getCacheName(), config);
       case HYBRID:
-        Cache parent = new Cache(SidecarDataCacheType.OFFHEAP.getCacheName(), config);
+        Cache parent = new Cache(SidecarDataCacheType.MEMORY.getCacheName(), config);
         Cache victim = new Cache(SidecarDataCacheType.FILE.getCacheName(), config);
         parent.setVictimCache(victim);
         return parent;
@@ -176,8 +176,8 @@ public class TestUtils {
     String[] newTypes = new String[types.length + 3];
     System.arraycopy(types, 0, newTypes, 0, types.length);
     newTypes[newTypes.length - 3] = SidecarDataCacheType.FILE.getType();
-    newTypes[newTypes.length - 2] = SidecarDataCacheType.OFFHEAP.getType();
-    newTypes[newTypes.length - 1] = SidecarDataCacheType.OFFHEAP.getType();;
+    newTypes[newTypes.length - 2] = SidecarDataCacheType.MEMORY.getType();
+    newTypes[newTypes.length - 1] = SidecarDataCacheType.MEMORY.getType();;
     
     
     String cacheNames = com.carrotdata.sidecar.util.Utils.join(newNames, ",");
